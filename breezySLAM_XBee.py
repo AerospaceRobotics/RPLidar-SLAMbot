@@ -9,6 +9,7 @@
 
 
 from breezyslam.algorithms import CoreSLAM
+# from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.robots import WheeledRobot, Laser
 
 import sys
@@ -193,14 +194,17 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     
 
 class Slam(CoreSLAM):
+# class Slam(RMHC_SLAM):
   # updateSlam takes LIDAR data and uses BreezySLAM to calculate the robot's new position
 
   def __init__(self):
     self.scanLen = 361 # number of points per scan to be passed into BreezySLAM
     CoreSLAM.__init__(self, Laser(self.scanLen, 5.55, 0, +360, 7.0, 0, -0.02), 2*mapSize, mapRes, random_seed=0xabcd)
+    # RMHC_SLAM.__init__(self, Laser(self.scanLen, 5.55, 0, +360, 7.0, 0, -0.02), 2*mapSize, mapRes, random_seed=0xabcd)
 
   def updateSlam(self, dists, angs): # 15ms
     distVec = [0.0 for i in range(self.scanLen)]
+    velocities = None # odometry data, passed in from robot's encoders
 
     for i in range(numSamp): # create breezySLAM-compatible data from raw scan data
       index = float2int(angs[i])
@@ -208,7 +212,7 @@ class Slam(CoreSLAM):
       distVec[index] = dists[i] if distVec[index] == 0 else (dists[i]+distVec[index])/2
 
     # note that breezySLAM switches the x- and y- axes (their x is forward, 0deg; y is right, +90deg)
-    x, y, theta = self.update(distVec, None) # update slam information using particle filtering on LIDAR scan data // 10ms
+    x, y, theta = self.update(distVec, velocities) # update slam information using particle filtering on LIDAR scan data // 10ms
     return (y, x, theta)
 
 
