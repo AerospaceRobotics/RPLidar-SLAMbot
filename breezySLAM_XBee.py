@@ -389,7 +389,7 @@ class SerialThread(threading.Thread):
       if pointLine[PKT_LEN-1] == ENDLINE and 100 < distCurr < 6000 and angleCurr <= 360: # valid point
         total += 1
         self.serQueue.put((distCurr, angleCurr))
-      else:
+      else: # data matches what was transmitted
         missed += 1
         while self.ser.read(1) != ENDLINE: pass # delete current packet up to and including endline byte
 
