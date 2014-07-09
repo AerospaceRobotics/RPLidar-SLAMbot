@@ -3,7 +3,7 @@ BreezySLAM: Simple, efficient SLAM in Python
 
 robots.py: odometry models for different kinds of robots
 
-Copyright (C) 2014 Simon D. Levy
+Copyright (C) 2014 Suraj Bajracharya and Simon D. Levy
 
 This code is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as 
@@ -23,12 +23,16 @@ and If not, see
 <https:#projects.ardrone.org/attafchments/277/ParrotLicense.txt> 
 and
 <https:#projects.ardrone.org/attachments/278/ParrotCopyrightAndDisclaimer.txt>.
+'''
 
+'''
 Change Log:
 
 01-MAR-2014: Simon D. Levy - Initial release
 19-MAR-2014: SDL           - Added Laser class
 31-MAR-2014: SDL           - Robot.computeVelocities returns dtheta in degrees
+01-MAY-2014: SDL           - Migrated Laser class to C extension
+04-MAY-2014: SDL           - Changed from meters to millimeters
 '''
 
 import math
@@ -42,13 +46,13 @@ class WheeledRobot(object):
         (timestampSeconds, leftWheelDegrees, rightWheelDegrees)      
     '''
     
-    def __init__(self, wheelRadiusMeters, halfAxleLengthMeters):
+    def __init__(self, wheelRadiusMillimeters, halfAxleLengthMillimeters):
         '''
-        wheelRadiusMeters    radius of each odometry wheel, in meters        
-        halfAxleLengthMeters half the length of the axle between the odometry wheels, in meters  
+        wheelRadiusMillimeters    radius of each odometry wheel   
+        halfAxleLengthMillimeters half the length of the axle between the odometry wheels  
         '''
-        self.wheelRadiusMeters = wheelRadiusMeters     
-        self.halfAxleLengthMeters = halfAxleLengthMeters
+        self.wheelRadiusMillimeters = wheelRadiusMillimeters  
+        self.halfAxleLengthMillimeters = halfAxleLengthMillimeters
         
         self.timestampSecondsPrev = None        
         self.leftWheelDegreesPrev = None
@@ -56,8 +60,8 @@ class WheeledRobot(object):
                 
     def __str__(self):
         
-        return '<Wheel radius=%f m Half axle Length=%f m>' % \
-        (self.wheelRadiusMeters, self.halfAxleLengthMeters)
+        return '<Wheel radius=%f mm Half axle Length=%f mm>' % \
+        (self.wheelRadiusMillimeters, self.halfAxleLengthMillimeters)
         
     def __repr__(self):
         
@@ -70,16 +74,16 @@ class WheeledRobot(object):
         Parameters:
         
           timestamp          time stamp, in whatever units your robot uses       
-          leftWheelOdometry  odometry for left wheel, in whatever units your robot uses       
-          rightWheelOdometry odometry for right wheel, in whatever units your robot uses
+          leftWheelOdometry  odometry for left wheel, in whatever form your robot uses       
+          rightWheelOdometry odometry for right wheel, in whatever form your robot uses
         
-        Returns a tuple (dxyMeters, dthetaDegrees, dtSeconds)
+        Returns a tuple (dxyMillimeters, dthetaDegrees, dtSeconds)
         
-          dxyMeters     forward distance traveled, in meters
+          dxyMillimeters     forward distance traveled, in millimeters
           dthetaDegrees change in angular position, in degrees
           dtSeconds     elapsed time since previous odometry, in seconds
         '''                      
-        dxyMeters = 0
+        dxyMillimeters = 0
         dthetaDegrees = 0
         dtSeconds = 0
                        
@@ -91,10 +95,10 @@ class WheeledRobot(object):
             leftDiffDegrees = leftWheelDegreesCurr - self.leftWheelDegreesPrev
             rightDiffDegrees = rightWheelDegreesCurr - self.rightWheelDegreesPrev
             
-            dxyMeters =  self.wheelRadiusMeters * \
+            dxyMillimeters =  self.wheelRadiusMillimeters * \
                     (math.radians(leftDiffDegrees) + math.radians(rightDiffDegrees))
                
-            dthetaDegrees = self.wheelRadiusMeters / self.halfAxleLengthMeters * \
+            dthetaDegrees =  (float(self.wheelRadiusMillimeters) / self.halfAxleLengthMillimeters) * \
                     (rightDiffDegrees - leftDiffDegrees)
                 
             dtSeconds = timestampSecondsCurr - self.timestampSecondsPrev
@@ -105,48 +109,6 @@ class WheeledRobot(object):
         self.rightWheelDegreesPrev = rightWheelDegreesCurr
 
         # Return linear velocity, angular velocity, time difference
-        return dxyMeters, dthetaDegrees, dtSeconds 
+        return dxyMillimeters, dthetaDegrees, dtSeconds 
         
-        
-class Laser(object):
-    
-    def __init__(self, \
-        scanSize,\
-        scanRateHz,\
-        angleMinDegrees,\
-        angleMaxDegrees,\
-        distanceNoDetectionMeters,\
-        detectionMargin,\
-        offsetMeters):
-        '''
-        scanSize                   number of rays per scan
-        scanRateHz                 laser scan rate in Hertz
-        angleMinDegrees            minimum laser angle in degrees
-        angleMaxDegrees            maximum laser angle in degrees
-        distanceNoDetectionMeters  scan distances above this are treated as infinfity
-        detectionMargin            number of rays at edges of scan to ignore
-        offsetMeters               forward/backward offset of laser motor from robot center
-        '''
-        
-        self.scan_size = scanSize
-        self.scan_rate_hz = scanRateHz
-        self.angle_min_degrees = angleMinDegrees
-        self.angle_max_degrees = angleMaxDegrees
-        self.distance_no_detection_meters = distanceNoDetectionMeters
-        self.detection_margin = detectionMargin
-        self.offset_meters = offsetMeters
-        
-    def __str__(self):
-        
-        return  '<offset=%3.0f m scan_size=%d scan_rate = %d hz' % \
-        (self.offset_meters, self.scan_size, self.scan_rate_hz) + \
-        'angle_min=%d deg angle_max=%d deg' % \
-        (self.angle_min_deg, self.angle_max_deg) + \
-        'detection_margin=%d distance_no_detection_meters=%4.4f m>' % \
-        (self.detection_margin, self.distance_no_detection_meters)
-        
-    def __repr__(self):
-        
-        return self.__str__()        
-            
 

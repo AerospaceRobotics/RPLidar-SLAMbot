@@ -1,46 +1,12 @@
-/*
-log2pgm.cpp : BreezySLAM demo.  Reads logfile with odometry and scan data from 
-Paris Mines Tech and produces a .PGM image file showing robot path 
-and final map.
-
-For details see
-
-@inproceedings{,
-    author    = {Bruno Steux and Oussama El Hamzaoui},
-    title     = {SinglePositionSLAM: a SLAM Algorithm in less than 200 lines of C code},
-    booktitle = {11th International Conference on Control, Automation, Robotics and Vision, ICARCV 2010, Singapore, 7-10 
-    December 2010, Proceedings},
-    pages     = {1975-1979},
-    publisher = {IEEE},
-    year      = {2010}
-}
-
-Copyright (C) 2014 Simon D. Levy
-
-This code is free software: you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as 
-published by the Free Software Foundation, either version 3 of the 
-License, or (at your option) any later version.
-
-This code is distributed in the hope that it will be useful,     
-but WITHOUT ANY WARRANTY without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License 
-along with this code.  If not, see <http://www.gnu.org/licenses/>.
-
-Change log:
-
-20-APR-2014 - Simon D. Levy - Get params from command line
-05-JUN-2014 - SDL - get random seed from command line
-*/
-
 // SinglePositionSLAM params: gives us a nice-size map
 static const int MAP_SIZE_PIXELS        = 800;
 static const int MAP_SCALE_MM_PER_PIXEL =  35;
 
-static const int SCAN_SIZE 		        = 682;
+
+static const int SCAN_SIZE 		                = 682;
+
+// Arbitrary
+static const int RANDOM_SEED                    = 0xabcd;
 
 // Arbitrary maximum length of line in input logfile
 #define MAXLINE 10000
@@ -53,7 +19,6 @@ using namespace std;
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#include <time.h>
 
 #include "Position.hpp"
 #include "Laser.hpp"
@@ -305,19 +270,19 @@ int mm2pix(double mm)
 int main( int argc, const char** argv )
 {    
     // Bozo filter for input args
-    if (argc < 3)
+    if (argc < 4)
     {
         fprintf(stderr, 
-            "Usage:   %s <dataset> <use_odometry> <random_seed>\n", 
+            "Usage:   %s <dataset> <use_odometry> <use_stochastic_search>\n", 
             argv[0]);
-        fprintf(stderr, "Example: %s exp2 1 9999\n", argv[0]);
+        fprintf(stderr, "Example: %s <exp2> 1 0\n", argv[0]);
         exit(1);
     }
     
     // Grab input args
     const char * dataset = argv[1];
-    bool use_odometry    =  atoi(argv[2]) ? true : false;
-    int random_seed =  argc > 3 ? atoi(argv[3]) : 0;
+    bool use_odometry        =  atoi(argv[2]) ? true : false;
+    bool use_stochastic_search =  atoi(argv[3]) ? true : false;
     
     // Load the Lidar and odometry data from the file   
     vector<int *> scans;
@@ -332,22 +297,19 @@ int main( int argc, const char** argv )
         
     // Create SLAM object
     HokuyoURG04 laser;
-    SinglePositionSLAM * slam = random_seed ?
-    (SinglePositionSLAM*)new RMHC_SLAM(laser, MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL, random_seed) :
+    SinglePositionSLAM * slam = use_stochastic_search ?
+    (SinglePositionSLAM*)new RMHC_SLAM(laser, MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL, RANDOM_SEED) :
     (SinglePositionSLAM*)new Deterministic_SLAM(laser, MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL);
 	    
     // Report what we're doing
-    int nscans = scans.size();
+    int nscans = 100; //scans.size();
     printf("Processing %d scans with%s odometry / with%s particle filter...\n",
-        nscans, use_odometry ? "" : "out", random_seed ? "" : "out");
+        nscans, use_odometry ? "" : "out", use_stochastic_search ? "" : "out");
     ProgressBar * progbar = new ProgressBar(0, nscans, 80); 
         
     // Start with an empty trajectory of positions
     vector<double *> trajectory;
     
-    // Start timing
-    time_t start_sec = time(NULL);
-
     // Loop over scans
     for (int scanno=0; scanno<nscans; ++scanno)
     {                         
@@ -378,14 +340,12 @@ int main( int argc, const char** argv )
         fflush(stdout);
     }
 
-    // Report speed
-    time_t elapsed_sec = time(NULL) - start_sec;
-    printf("\n%d scans in %ld seconds = %f scans / sec\n", 
-           nscans, elapsed_sec, (float)nscans/elapsed_sec);
+    printf("\n");
               
     // Get final map
     slam->getmap(mapbytes);
 
+    
     // Put trajectory into map as black pixels
     for (int k=0; k<(int)trajectory.size(); ++k)
     {        
@@ -399,47 +359,9 @@ int main( int argc, const char** argv )
         mapbytes[coords2index(x, y)] = 0;
     }
             
-    // Save map and trajectory as PGM file    
-    
-    char filename[100];
-    sprintf(filename, "%s.pgm", dataset);
-    printf("\nSaving map to file %s\n", filename);
-    
-    FILE * output = fopen(filename, "wt");
-    
-    fprintf(output, "P2\n%d %d 255\n", MAP_SIZE_PIXELS, MAP_SIZE_PIXELS);
-    
-    for (int y=0; y<MAP_SIZE_PIXELS; y++)
-    {
-        for (int x=0; x<MAP_SIZE_PIXELS; x++)
-        {
-            fprintf(output, "%d ", mapbytes[coords2index(x, y)]);
-        }
-        fprintf(output, "\n");
-    }
-    
-    printf("\n");
-    
-    // Clean up
-    for (int scanno=0; scanno<(int)scans.size(); ++scanno)
-    {                                       
-        delete scans[scanno];
-        delete odometries[scanno];
-    }
-    
-    if (random_seed)
-    {
-        delete ((RMHC_SLAM *)slam);
-    }
-    else
-    {
-        delete ((Deterministic_SLAM *)slam);
-    }
-
+    delete slam;
     delete progbar;
     delete mapbytes;
-    fclose(output);
-
     
     return 0;
 }

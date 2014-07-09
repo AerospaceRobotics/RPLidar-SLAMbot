@@ -22,9 +22,9 @@
 #   <https:#projects.ardrone.org/attachments/278/ParrotCopyrightAndDisclaimer.txt>.
 
 # Where you want to put the library
-# LIBDIR = /usr/local/lib
-LIBDIR = /home/michael/sketchbook/libraries
+LIBDIR = /usr/local/lib
 
+# Set library extension based on OS
 ifeq ("$(shell uname)","Darwin")
   LIBEXT = dylib
 else ifeq ("$(shell uname)","Linux")
@@ -34,26 +34,55 @@ else
   LIBEXT = dll
 endif
 
+ARCH = $(shell arch)
+
+# Set SIMD compile params based on architecture
+ifeq ("$(ARCH)","armv7l")
+  SIMD_FLAGS = -mfpu=neon
+else ifeq ("$(ARCH)","i686")
+  SIMD_FLAGS = -msse3
+else
+  ARCH = sisd
+endif
+
 all: libbreezyslam.$(LIBEXT)
 
 test: breezytest
 	./breezytest
 
-libbreezyslam.$(LIBEXT): cppcoreslam.o coreslam.o rmhc_filter.o ziggrand.o
-	g++ -O3 -shared cppcoreslam.o coreslam.o rmhc_filter.o ziggrand.o \
+libbreezyslam.$(LIBEXT): algorithms.o Random.o Scan.o Map.o Laser.o WheeledRobot.o \
+                         coreslam.o coreslam_$(ARCH).o ziggrand.o
+	g++ -O3 -shared algorithms.o Random.o Scan.o Map.o Laser.o WheeledRobot.o \
+                        coreslam.o coreslam_$(ARCH).o ziggrand.o \
           -o libbreezyslam.$(LIBEXT) -lm
 
-cppcoreslam.o: cppcoreslam.cpp breezyslam.hpp ../coreslam//coreslam.h
-	g++ -O3 -I../coreslam -c -Wall $(CFLAGS) cppcoreslam.cpp
+algorithms.o: algorithms.cpp algorithms.hpp Laser.hpp Position.hpp Map.hpp Scan.hpp Velocities.hpp \
+               WheeledRobot.hpp Random.hpp ../c/coreslam.h 
+	g++ -O3 -I../c -c -Wall $(CFLAGS) algorithms.cpp
 
-coreslam.o: ../coreslam/coreslam.c ../coreslam/coreslam.h
-	gcc -O3 -c -Wall $(CFLAGS) ../coreslam/coreslam.c
+Random.o: Random.cpp Random.hpp 
+	g++ -O3 -I../c -c -Wall $(CFLAGS) Random.cpp
 
-rmhc_filter.o: ../coreslam/rmhc_filter.c ../coreslam/coreslam.h
-	gcc -O3 -c -Wall $(CFLAGS) ../coreslam/rmhc_filter.c
+Scan.o: Scan.cpp Scan.hpp Velocities.hpp Laser.hpp ../c/coreslam.h
+	g++ -O3 -I../c -c -Wall $(CFLAGS) Scan.cpp
 
-ziggrand.o: ../coreslam/ziggrand.c
-	gcc -O3 -c -Wall $(CFLAGS) ../coreslam/ziggrand.c
+Map.o: Map.cpp Map.hpp Position.hpp Scan.hpp ../c/coreslam.h
+	g++ -O3 -I../c -c -Wall $(CFLAGS) Map.cpp
+
+Laser.o: Laser.cpp Laser.hpp ../c/coreslam.h
+	g++ -O3 -I../c -c -Wall $(CFLAGS) Laser.cpp
+
+WheeledRobot.o: WheeledRobot.cpp WheeledRobot.hpp 
+	g++ -O3 -I../c -c -Wall $(CFLAGS) WheeledRobot.cpp
+
+coreslam.o: ../c/coreslam.c ../c/coreslam.h
+	gcc -O3 -c -Wall $(CFLAGS) ../c/coreslam.c
+
+coreslam_$(ARCH).o: ../c/coreslam_$(ARCH).c ../c/coreslam.h
+	gcc -O3 -c -Wall $(CFLAGS) $(SIMD_FLAGS) ../c/coreslam_$(ARCH).c
+
+ziggrand.o: ../c/ziggrand.c
+	gcc -O3 -c -Wall $(CFLAGS) ../c/ziggrand.c
 	
 install: libbreezyslam.$(LIBEXT)
 	cp libbreezyslam.$(LIBEXT) $(LIBDIR)

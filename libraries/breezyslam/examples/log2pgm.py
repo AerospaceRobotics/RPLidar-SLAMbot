@@ -32,71 +32,97 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License 
 along with this code.  If not, see <http://www.gnu.org/licenses/>.
+
+Change log:
+
+20-APR-2014 - Simon D. Levy - Get params from command line
+05-JUN-2014 - SDL - get random seed from command line
 '''
 
-# Log / PGM file root name
-DATASET                         = "exp2"
+# Map size, scale
+MAP_SIZE_PIXELS          = 800
+MAP_SCALE_MM_PER_PIXEL   =  35
 
-# Flags
-USE_ODOMETRY                    = False
-USE_PARTICLE_FILTER             = True
+from breezyslam.algorithms import Deterministic_SLAM, RMHC_SLAM
+from breezyslam.components import Laser
+from breezyslam.robots import WheeledRobot
 
-# Maps size, scale
-MAP_SIZE_PIXELS                 = 800
-MAP_SCALE_PIXELS_PER_METER      = 30
+from mines import URG04, Rover, load_data
+from progressbar import ProgressBar
+from pgm_utils import pgm_save
 
-# Arbitrary
-RANDOM_SEED                     = 0xabcd
-        
-from breezyslam.algorithms import CoreSLAM
-from breezyslam.robots import WheeledRobot, Laser
-
-from math import pi
 from sys import argv, exit, stdout
-from math import pi, degrees
+from time import time
 
 def main():
 	    
+    # Bozo filter for input args
+    if len(argv) < 3:
+        print('Usage:   %s <dataset> <use_odometry> <random_seed>' % argv[0])
+        print('Example: %s exp2 1 9999' % argv[0])
+        exit(1)
+    
+    # Grab input args
+    dataset = argv[1]
+    use_odometry  =  True if int(argv[2]) else False
+    seed =  int(argv[3]) if len(argv) > 3 else 0
+    
 	# Load the data from the file    
-    lidars, odometries = load_data(DATASET)
+    lidars, odometries = load_data('.', dataset)
     
     # Build a robot model if we want odometry
-    robot = Rover() if USE_ODOMETRY else None
+    robot = Rover() if use_odometry else None
     
     # Create a CoreSLAM object with laser params and optional robot object
-    slam = CoreSLAM(URG04(), MAP_SIZE_PIXELS, MAP_SCALE_PIXELS_PER_METER, \
-                    random_seed=RANDOM_SEED)
-    
-    # If using odoemtry, turn off off particle filter by setting search variances to zero
-    if not USE_PARTICLE_FILTER:
-        slam.SIGMA_XY_METERS = 0
-        slam.SIGMA_THETA_DEGREES = 0
-        
+    slam = RMHC_SLAM(URG04(), MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL, random_seed=seed) \
+           if seed \
+           else Deterministic_SLAM(URG04(), MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL)
+           
     # Report what we're doing
     nscans = len(lidars)
     print('Processing %d scans with%s odometry / with%s particle filter...' % \
         (nscans, \
-         '' if USE_ODOMETRY else 'out', '' if USE_PARTICLE_FILTER else 'out'))
-    progbar = make_progress_bar(nscans)
+         '' if use_odometry else 'out', '' if seed else 'out'))
+    progbar = ProgressBar(0, nscans, 80)
     
     # Start with an empty trajectory of positions
     trajectory = []
+
+    # Start timing
+    start_sec = time()
     
+    # Loop over scans    
     for scanno in range(nscans):
-           
-        # Convert odometry to velocities if indicated
-        velocities = robot.computeVelocities(odometries[scanno]) \
-                     if USE_ODOMETRY else None
+    
+        if use_odometry:
+                  
+            # Convert odometry to velocities
+            velocities = robot.computeVelocities(odometries[scanno])
                                                      
-        # Update SLAM with lidar, velocities, obtaining new position      
-        x, y, theta = slam.update(lidars[scanno], velocities)
-                                
+            # Update SLAM with lidar and velocities
+            slam.update(lidars[scanno], velocities)
+            
+        else:
+        
+            # Update SLAM with lidar alone
+            slam.update(lidars[scanno])
+        
+        # Get new position
+        x_mm, y_mm, theta_degrees = slam.getpos()    
+        
         # Add new position to trajectory
-        trajectory.append((x, y))
+        trajectory.append((x_mm, y_mm))
         
         # Tame impatience
-        show_progress_bar(progbar, scanno)
-                
+        progbar.updateAmount(scanno)
+        stdout.write('\r%s' % str(progbar))
+        stdout.flush()
+
+    # Report elapsed time
+    elapsed_sec = time() - start_sec
+    print('\n%d scans in %f sec = %f scans / sec' % (nscans, elapsed_sec, nscans/elapsed_sec))
+                    
+                                
     # Create a byte array to receive the computed maps
     mapbytes = bytearray(MAP_SIZE_PIXELS * MAP_SIZE_PIXELS)
     
@@ -105,188 +131,24 @@ def main():
     
     # Put trajectory into map as black pixels
     for coords in trajectory:
-        
-        x, y = coords
-                        
-        x = meters2pixels(x)
-        y = meters2pixels(y)
-                        
-        mapbytes[coords2index(x, MAP_SIZE_PIXELS-y)] = 0
+                
+        x_mm, y_mm = coords
+                               
+        x_pix = mm2pix(x_mm)
+        y_pix = mm2pix(y_mm)
+                                                                                              
+        mapbytes[y_pix * MAP_SIZE_PIXELS + x_pix] = 0;
                     
     # Save map and trajectory as PGM file    
-        
-    filename = '%s.pgm' % DATASET
-    print('\nSaving map to file %s' % filename)
-        
-    output = open(filename, 'wt')
-    
-    output.write('P2\n%d %d 255\n' % (MAP_SIZE_PIXELS, MAP_SIZE_PIXELS))
-    
-    progbar = make_progress_bar(MAP_SIZE_PIXELS)
-
-    for y in range(MAP_SIZE_PIXELS):
-        for x in range(MAP_SIZE_PIXELS):
-            output.write('%d ' % mapbytes[coords2index(x, y)])
-        output.write('\n')
-        show_progress_bar(progbar,y)
+    pgm_save('%s.pgm' % dataset, mapbytes, (MAP_SIZE_PIXELS, MAP_SIZE_PIXELS))
             
-    output.close()
-    stdout.write('\n')
+# Helpers ---------------------------------------------------------        
+
+def mm2pix(mm):
     
+    return int(mm / MAP_SCALE_MM_PER_PIXEL)  
     
-# Map coordinate helpers -------------------------------------------------------
 
-def coords2index(x, y):
-    
-    return (MAP_SIZE_PIXELS - 1 - y) * MAP_SIZE_PIXELS + x
-   
-  
-def meters2pixels(c):
-    
-    return int(c * MAP_SCALE_PIXELS_PER_METER)
-
-    
-# Method to load all from file ------------------------------------------------
-# Each line in the file has the format:
-#
-#  TIMESTAMP  ... Q1  Q1 ... Distances
-#  (usec)                    (mm)
-#  0          ... 2   3  ... 24 ... 
-#  
-#where Q1, Q2 are odometry values
-
-def load_data(dataset):
-    
-    filename = '%s.dat' % dataset
-    print('Loading data from %s...' % filename)
-    
-    fd = open(filename, 'rt')
-    
-    scans = []
-    odometries = []
-    
-    while True:  
-        
-        s = fd.readline()
-        
-        if len(s) == 0:
-            break       
-            
-        toks = s.split()[0:-1] # ignore ''
-                
-        odometry = (long(toks[0]), int(toks[2]), int(toks[3]))
-                
-        lidar = [int(tok) for tok in toks[24:]]
-                
-        scans.append(lidar)
-        odometries.append(odometry)
-        
-    fd.close()
-    
-    return scans, odometries
-
-# Class for Hokuyo URG04 LIDAR -------------------------------------------------
-
-class URG04(Laser):
-    
-    def __init__(self):
-        
-        Laser.__init__(self, 682, 10, -120, +120, 4.0, 70, .145)
-        
-# Class for MinesRover custom robot ------------------------------------------
-
-class Rover(WheeledRobot):
-    
-    def __init__(self):
-        
-        WheeledRobot.__init__(self, 0.077, 0.165)
-        
-        self.ticks_per_cycle = 2000
-                        
-    def __str__(self):
-        
-        return '<%s ticks_per_cycle=%d>' % (WheeledRobot.__str__(self), self.ticks_per_cycle)
-        
-    def computeVelocities(self, odometry):
-        
-        return WheeledRobot.computeVelocities(self, odometry[0], odometry[1], odometry[2])
-
-    def extractOdometry(self, timestamp, leftWheel, rightWheel):
-                
-        # Convert microseconds to seconds, ticks to angles        
-        return timestamp / 1e6, \
-               self._ticks_to_degrees(leftWheel), \
-               self._ticks_to_degrees(rightWheel)
-               
-    def odometryStr(self, odometry):
-        
-        return '<timestamp=%d usec leftWheelTicks=%d rightWheelTicks=%d>' % \
-               (odometry[0], odometry[1], odometry[2])
-               
-    def _ticks_to_degrees(self, ticks):
-        
-        return ticks * (180. / self.ticks_per_cycle)
-        
-               
-# Progress-bar class
-# Downloaded from http://code.activestate.com/recipes/168639-progress-bar-class/
-# 12 January 2014
-
-class progressBar:
-	
-	def __init__(self, minValue = 0, maxValue = 10, totalWidth=12):
-		self.progBar = "[]"   # This holds the progress bar string
-		self.min = minValue
-		self.max = maxValue
-		self.span = maxValue - minValue
-		self.width = totalWidth
-		self.amount = 0       # When amount == max, we are 100% done 
-		self.updateAmount(0)  # Build progress bar string
-
-	def updateAmount(self, newAmount = 0):
-		
-		if newAmount < self.min: newAmount = self.min
-		if newAmount > self.max: newAmount = self.max
-		self.amount = newAmount
-
-		# Figure out the new percent done, round to an integer
-		diffFromMin = float(self.amount - self.min)
-		percentDone = (diffFromMin / float(self.span)) * 100.0
-		percentDone = round(percentDone)
-		percentDone = int(percentDone)
-
-		# Figure out how many hash bars the percentage should be
-		allFull = self.width - 2
-		numHashes = (percentDone / 100.0) * allFull
-		numHashes = int(round(numHashes))
-
-		# build a progress bar with hashes and spaces
-		self.progBar = \
-                    "[" + '#'*numHashes + ' '*(allFull-numHashes) + "]"
-
-		# figure out where to put the percentage, roughly centered
-		percentPlace = \
-                    int((len(self.progBar) / 2) - len(str(percentDone))) 
-		percentString = str(percentDone) + "%"
-		
-		# slice the percentage into the bar
-		self.progBar = self.progBar[0:percentPlace] + percentString + \
-                       self.progBar[percentPlace+len(percentString):]
-
-	def __str__(self):
-		
-		return str(self.progBar)
-		
-# Progress-bar helpers ---------------------------------------------------------        
-
-def make_progress_bar(maxval):
-    return progressBar(0, maxval, 80)
-
-def show_progress_bar(progbar, amt):
-    progbar.updateAmount(amt)
-    stdout.write('\r%s' % str(progbar))
-    stdout.flush()
-            
-    
+      
                     
 main()
