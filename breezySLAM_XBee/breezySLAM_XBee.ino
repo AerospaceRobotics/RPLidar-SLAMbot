@@ -24,15 +24,15 @@ const int LEFT_ENCODER_1 = 3, LEFT_ENCODER_2 = 2;
 const int RIGHT_ENCODER_1 = 18, RIGHT_ENCODER_2 = 19;
 
 // Other Constants (in C++, static const is redundant, ie same as const; extern const is opposite):
-#define NEWLINE '\xFE' // response indicator (&thorn)
-#define ENDLINE '\xFF' // end line terminator (&yuml)
+#define ENC_FLAG '\xFE' // response indicator (&thorn)
+#define SCN_FLAG '\xFF' // end line terminator (&yuml)
 const float dFac = 0.5; // distance resolution factor [1/mm]
 const unsigned short aFac = 8; // angle resolution factor [1/deg]
 const unsigned short DIST_MIN = 100*dFac; // minimum distance, factored
 const unsigned short DIST_MAX = 6000*dFac; // maximum distance, factored
 
 const unsigned short PKT_SIZE = 4; // bytes per point
-const unsigned short BUF_LEN = 40; // points per transmit packet
+const unsigned short BUF_LEN = 20; // points per transmit packet
 const unsigned short BUF_SIZE = PKT_SIZE * BUF_LEN; // bytes per transmit packet
 
 const unsigned short MINSPEED = 150; // minimum functional motor speed
@@ -55,8 +55,10 @@ int beatDuration = 50; // Heartbeat timing loop (ms)
 unsigned short ind = 0; // counter of number of scans in current revolution
 // unsigned long long curTime;
 // unsigned long long endTime;
-long leftWheelPos;
-long rightWheelPos;
+short leftWheelAbs = 0;
+short rightWheelAbs = 0;
+int leftWheelTemp = 0;
+int rightWheelTemp = 0;
 int driveError = 0; // positive error = left wheel gone too far
 int bufferIndex = 0; // where in the software buffer are we?
 byte softBuffer[BUF_SIZE] = {}; // store points to send in BUF_LEN-packet bursts
@@ -67,8 +69,7 @@ bool sleeping = false; // Do nothing except check for wake up command
 bool runLIDAR = false; // Do stuff with LIDAR?
 bool heartState = false; // Current state of heartbeat LED
 bool phaseMotorDriving = true; // True: Phase-Enable; False: In-In (for motor driver)
-bool pc = false; // Are we connected to a computer?
-bool cmdMode = false; // Are we in command mode with the XBee?
+bool debugXBee = false; // Should we let the computer talk directly to the XBee?
 
 // Control Values:
 unsigned char motorspeed = 237; // approx motor speed for 360 readings per revolution
@@ -98,7 +99,7 @@ HardwareSerial & xbeeSer = Serial3;
 
 
 void setup() {
-  // if(pcSer) {pcSer.begin(250000); cmdMode = true; } // if connected to computer, assume talking to XBee
+  if(debugXBee) { pcSer.begin(250000); } // if connected to computer, assume talking to XBee // 'if' broken
   lidar.begin(lidarSer); // bind RPLIDAR driver to arduino Serial2
   xbeeSer.begin(250000); // initialize communication with xBee
   xbeeSer.setTimeout(5); // used by parseInt()
@@ -109,14 +110,18 @@ void setup() {
 
   digitalWrite(MOTOR_MODE, phaseMotorDriving);
   nextBeat = millis() + 1000; // beat heart for fist time 1 second after setup
+
+  leftEncoder.write(0);
+  rightEncoder.write(0);
 }
 
 void loop() { // 16us
-  // if(cmdMode and pcSer.available()>0) { checkPCInput(); }
-  if(not cmdMode and xbeeSer.available()>0) { checkXBeeInput(); } // 24us idle - 60us with input
+  if(debugXBee and pcSer.available()>0) { checkPCInput(); }
+  if(not debugXBee and xbeeSer.available()>0) { checkXBeeInput(); } // 24us idle - 60us with input
   if(millis()>nextBeat) {
     beatHeart(heartState); nextBeat += beatDuration; // 16us
-    if(updatingDriving) { readEncoders(); updateDriving(); } // 64us
+    readEncoders();
+    if(updatingDriving) { updateDriving(); } // 64us
   }
 
   if(runLIDAR) {
@@ -155,13 +160,17 @@ void writeScanData(const unsigned short & dist, const unsigned short & ang) { //
     softBuffer[bufferIndex + 0] = dist & MASK1; // least significant dist bits
     softBuffer[bufferIndex + 1] = (dist & MASK2) >> 8 | (ang & MASK3) << 4; // most significant dist bits, least significant ang bits
     softBuffer[bufferIndex + 2] = (ang & MASK4) >> 4; // most significant ang bits
-    softBuffer[bufferIndex + 3] = ENDLINE; // end of point
+    softBuffer[bufferIndex + 3] = SCN_FLAG; // end of point
     if(bufferIndex == BUF_SIZE - PKT_SIZE) { // we just filled the buffer
       for(int i=0; i<BUF_SIZE; i++) {
         xbeeSer.write(softBuffer[i]); // send all data to XBee for transmitting
       }
-      // xbeeSer.write(softBuffer, BUF_SIZE); // send all data to XBee for transmitting
       bufferIndex = 0; // start writing to beginning of softBuffer
+      unsigned short currTime = millis();
+      xbeeSer.write(ENC_FLAG); xbeeSer.write(ENC_FLAG); // begin encoder info
+      xbeeSer.write(leftWheelAbs & MASK1); xbeeSer.write(leftWheelAbs >> 8);
+      xbeeSer.write(rightWheelAbs & MASK1); xbeeSer.write(rightWheelAbs >> 8);
+      xbeeSer.write(currTime & MASK1); xbeeSer.write(currTime >> 8);
     } else {
       bufferIndex += PKT_SIZE;
     }
@@ -196,8 +205,8 @@ void driveRight(const int & rspeed) {
   analogWrite(RIGHT_ENABLE, abs(rspeed)>255?255:abs(rspeed)); // Writes speed to pin
 }
 void updateDriving() { // keep relative wheel distance traveled as close to goal as possible
-  if(abs(leftWheelPos) > abs(lGoal) or abs(rightWheelPos) > abs(rGoal)) {zeroMotors(); updatingDriving = false; return;}
-  driveError = straightness * (sgn(lGoal)*leftWheelPos - sgn(rGoal)*rightWheelPos);
+  if(abs(leftWheelTemp) > abs(lGoal) or abs(rightWheelTemp) > abs(rGoal)) {zeroMotors(); updatingDriving = false; return;}
+  driveError = straightness * (sgn(lGoal)*leftWheelTemp - sgn(rGoal)*rightWheelTemp);
   driveLeft(sgn(lGoal)*(AMPLITUDE - driveError));
   driveRight(sgn(rGoal)*(AMPLITUDE + driveError));
 }
@@ -208,12 +217,16 @@ void zeroMotors() {
 
 // Encoder Reading and Resetting
 void readEncoders() {
-  leftWheelPos = leftEncoder.read();
-  rightWheelPos = rightEncoder.read();
+  long left = leftEncoder.read();
+  long right = rightEncoder.read();
+  leftWheelTemp += left - leftWheelAbs;
+  rightWheelTemp += right - rightWheelAbs;
+  leftWheelAbs = left;
+  rightWheelAbs = right;
 }
 void zeroEncoders() {
-  leftEncoder.write(0);
-  rightEncoder.write(0);
+  leftWheelTemp = 0;
+  rightWheelTemp = 0;
 }
 
 // Keyboard Control
@@ -226,7 +239,7 @@ void checkXBeeInput() {
     zeroEncoders(); // reset the encoders in preparation for a new driving command
     updatingDriving = true; // tell main loop to monitor driving status
     goal = xbeeSer.parseInt(); // get associated value // returns 0 if no int found after 2ms
-    for(int i=0; i<5; i++) { xbeeSer.write(NEWLINE); } // command received
+    for(int i=0; i<PKT_SIZE; i++) { xbeeSer.write(ENC_FLAG); } // command received
   } else if(inChar == 'W' or inChar == 'A' or inChar == 'S' or inChar == 'D') {
     zeroEncoders(); // reset the encoders in preparation for a new driving command
     updatingDriving = true; // tell main loop to monitor driving status
@@ -252,14 +265,14 @@ void checkXBeeInput() {
   } else if(inChar == 'v') {
     candidate = xbeeSer.parseInt();
     if( candidate>=0 && candidate<=255 ) { AMPLITUDE = candidate; }
-    for(int i=0; i<5; i++) { xbeeSer.write(NEWLINE); } // command received
+    for(int i=0; i<PKT_SIZE; i++) { xbeeSer.write(ENC_FLAG); } // command received
   }
 
   while(xbeeSer.available()>0) {xbeeSer.read();}; // clear all other incoming data
 }
 
-// void checkPCInput() { // relay all serial data between computer and XBee
-//   if(pcSer.peek() == 'q') { cmdMode = false; return; } // non-blocking (yay)
-//   while (pcSer.available()) { xbeeSer.write(pcSer.read()); delay(5); }
-//   while (xbeeSer.available()) { pcSer.write(xbeeSer.read()); delay(5); }
-// }
+void checkPCInput() { // allow computer to talk directly to XBee (Arduino asks as relay)
+  if(pcSer.peek() == 'q') { debugXBee = false; pcSer.end(); return; } // non-blocking (yay)
+  while (pcSer.available()) { xbeeSer.write(pcSer.read()); delay(5); }
+  while (xbeeSer.available()) { pcSer.write(xbeeSer.read()); delay(5); }
+}
