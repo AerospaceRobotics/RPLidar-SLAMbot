@@ -1,0 +1,22 @@
+Index: pyserial/serial/tools/list_ports_posix.py
+===================================================================
+--- pyserial/serial/tools/list_ports_posix.py  (revision 455)
++++ pyserial/serial/tools/list_ports_posix.py  (working copy)
+@@ -68,12 +68,12 @@
+         try:
+             desc = popen(['lsusb', '-v', '-s', '%s:%s' % (bus, dev)])
+             # descriptions from device
+-            iManufacturer = re_group('iManufacturer\s+\w+ (.+)', desc)
+-            iProduct = re_group('iProduct\s+\w+ (.+)', desc)
+-            iSerial = re_group('iSerial\s+\w+ (.+)', desc) or ''
++            iManufacturer = re_group(b'iManufacturer\s+\w+ (.+)', desc)
++            iProduct = re_group(b'iProduct\s+\w+ (.+)', desc)
++            iSerial = re_group(b'iSerial\s+\w+ (.+)', desc) or ''
+             # descriptions from kernel
+-            idVendor = re_group('idVendor\s+0x\w+ (.+)', desc)
+-            idProduct = re_group('idProduct\s+0x\w+ (.+)', desc)
++            idVendor = re_group(b'idVendor\s+0x\w+ (.+)', desc)
++            idProduct = re_group(b'idProduct\s+0x\w+ (.+)', desc)
+             # create descriptions. prefer text from device, fall back to the others
+             return '%s %s %s' % (iManufacturer or idVendor, iProduct or idProduct, iSerial)
+         except IOError:
