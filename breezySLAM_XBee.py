@@ -7,24 +7,28 @@
 # http://www.aerospacerobotics.com/             June-August 2014
 #                     Michael Searing & Bill Warner
 
-
 # from breezyslam.algorithms import CoreSLAM
 from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.components import Laser
 from breezyslam.robots import WheeledRobot
 
 import sys
-print "Python %s" % '.'.join([str(el) for el in sys.version_info[0:3]])
+print("Python {}".format('.'.join([str(el) for el in sys.version_info[0:3]])))
+
 if sys.version_info[0] < 3: # 2.x
-    import Tkinter as tk
+  print("Getting Python 2 modules")
+  import Tkinter as tk
+  from tkMessageBox import askokcancel
+  import Queue as queue # deal with sending data across threads
 else: # 3.x
-    import tkinter as tk
-    def raw_input(inStr): return input(inStr)
-from tkMessageBox import askokcancel
+  print("Getting Python 3 modules")
+  import tkinter as tk
+  from tkinter.messagebox import askokcancel
+  import queue # deal with sending data across threads
+  def raw_input(inStr): return input(inStr)
 
 import time # wait for robot to do things that take time
 import threading # allow serial checking to happen on top of tkinter interface things
-import Queue # deal with sending data across threads
 
 import serial # bind hardware serial
 from serial.tools import list_ports # get computer's port info
@@ -80,7 +84,7 @@ deg2ticks = ticksPerRev/degPerRev * ANGULAR_FLUX # [ticks/deg]
 ticks2deg = degPerRev/ticksPerRev * 1.0/ANGULAR_FLUX # [deg/tick]
 
 
-print "Each pixel is",round(1000.0/mapRes,1),"mm, or",round(1000.0/mapRes/25.4,2),"in"
+print("Each pixel is",round(1000.0/mapRes,1),"mm, or",round(1000.0/mapRes/25.4,2),"in")
 
 def float2int(x):
   return int(0.5 + x)
@@ -99,7 +103,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
     # newWindow = tk.Toplevel()
 
-    self.serQueue = Queue.Queue() # FIFO queue by default
+    self.serQueue = queue.Queue() # FIFO queue by default
     self.numLost = tk.StringVar() # status of serThread (should be a queue...)
     self.serThread = SerialThread(self.serQueue, self.numLost) # initialize thread object
 
@@ -233,7 +237,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       elif isinstance(queueItem[1], int):
         self.slam.currEncPos = queueItem
       else:
-        print "what"
+        print("serQueue broken")
       i += 1
     
 
@@ -259,7 +263,6 @@ class Slam(RMHC_SLAM):
       distVec[index] = dists[i] if distVec[index] == 0 else (dists[i]+distVec[index])/2
 
     # note that breezySLAM switches the x- and y- axes (their x is forward, 0deg; y is right, +90deg)
-    print distVec
     self.update(distVec, self.getVelocities()) # update slam information using particle filtering on LIDAR scan data // 10ms
     x, y, theta = self.getpos()
     return (y, x, theta)
@@ -405,7 +408,7 @@ class SerialThread(threading.Thread):
         self.ser.write(sendStr)
         tstart = time.clock()
         while time.clock() < tstart + 1: # give XBee 1 sec to respond
-          if self.ser.inWaiting(): print self.ser.read()
+          if self.ser.inWaiting(): print(self.ser.read())
         if inputStr.lower() == "atcn": # we've told the XBee to exit command mode, so we should, too...
           self.ser.write('q') # tells Arduino to stop talking to XBee (shouldn't affect computer XBee...)
           break
