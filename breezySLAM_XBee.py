@@ -7,13 +7,13 @@
 # http://www.aerospacerobotics.com/             June-August 2014
 #                     Michael Searing & Bill Warner
 
+import sys
+print("Python {}".format('.'.join([str(el) for el in sys.version_info[0:3]])))
+
 # from breezyslam.algorithms import CoreSLAM
 from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.components import Laser
 from breezyslam.robots import WheeledRobot
-
-import sys
-print("Python {}".format('.'.join([str(el) for el in sys.version_info[0:3]])))
 
 if sys.version_info[0] < 3: # 2.x
   print("Getting Python 2 modules")
@@ -152,22 +152,22 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     tk.Label(self, textvariable=self.numLost).pack(side="left", padx=5, pady=5)
     tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
 
-  def restartAll(self, rootInit=False):
-    if not rootInit: # reset called during program
-      self.resetting = True # stop currently running loops
-      self.after(2000, lambda: self.restartAll_2(rootInit)) # let other tkinter things run
-    else: # don't need to stop currently running loops, so go right to second half of restart
-      self.restartAll_2(rootInit)
+  def restartAll(self, rootInit=False, funcStep=0):
+    if funcStep == 0:
+      if not rootInit: # reset called during program
+        self.resetting = True # stop currently running loops
+        self.after(2000, lambda: self.restartAll(rootInit=rootInit, funcStep=1)) # let other tkinter things run
+      else: # don't need to stop currently running loops, so go right to second half of restart
+        self.restartAll_2(rootInit)
 
-  def restartAll_2(self, rootInit):
-    if not rootInit: # reset called during program
-      self.resetting = False
-
-    self.data = Data()
-    self.slam = Slam()
-    self.updateData(init=True) # pull data from queue, put into data matrix
-    self.updateMap() # draw new data matrix
-    self.sendCommand(loop=True) # check for user input and automatically send it
+    elif funcStep == 1:
+      if not rootInit: # reset called during program
+        self.resetting = False
+      self.data = Data()
+      self.slam = Slam()
+      self.updateData(init=True) # pull data from queue, put into data matrix
+      self.updateMap() # draw new data matrix
+      self.sendCommand(loop=True) # check for user input and automatically send it
 
   def closeWin(self):
     if askokcancel("Quit?", "Are you sure you want to quit?"):
