@@ -158,7 +158,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
         self.resetting = True # stop currently running loops
         self.after(2000, lambda: self.restartAll(rootInit=rootInit, funcStep=1)) # let other tkinter things run
       else: # don't need to stop currently running loops, so go right to second half of restart
-        self.restartAll_2(rootInit)
+        self.restartAll(rootInit=rootInit, funcStep=1)
 
     elif funcStep == 1:
       if not rootInit: # reset called during program
@@ -241,15 +241,13 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       i += 1
     
 
-# class Slam(CoreSLAM):
 class Slam(RMHC_SLAM):
   # updateSlam takes LIDAR data and uses BreezySLAM to calculate the robot's new position
   # getVelocities takes the encoder data (lWheel, rWheel, timeStamp) and finds change in translational and angular position and in time
 
   def __init__(self):
     self.scanLen = 361 # number of points per scan to be passed into BreezySLAM
-    # CoreSLAM.__init__(self, Laser(self.scanLen, 6, 0, +360, 7.0, 0, -0.02), 2*mapSize, 1000/mapRes)
-    RMHC_SLAM.__init__(self, Laser(self.scanLen, 6, 0, +360, 7000, 0, -35), 2*mapSize, 1000/mapRes, random_seed=0xabcd)
+    RMHC_SLAM.__init__(self, Laser(self.scanLen, 5.5, 0, +360, 7000, 0, -35), 2*mapSize, 1000/mapRes, random_seed=0xabcd)
     self.prevEncPos = () # robot encoder data
     self.currEncPos = () # left wheel [ticks], right wheel [ticks], timestamp [ms]
 
@@ -504,7 +502,7 @@ class SerialThread(threading.Thread):
 
 if __name__ == '__main__':
   root = Root() # create Tkinter window, containing entire App
-  root.protocol("WM_DELETE_WINDOW", root.closeWin)
+  root.protocol("WM_DELETE_WINDOW", root.closeWin) # control what happens when a window is closed externally (e.g. by the 'x')
   # print "window desired:",root.winfo_reqwidth(),root.winfo_reqheight() # get desired size of window
   # print "window actual:",root.winfo_width(),root.winfo_height() # get actual size of window
   root.mainloop() # start Tkinter loop
