@@ -41,6 +41,7 @@ import matplotlib.pyplot as plt
 
 # note that Data.saveImage() imports PIL and subprocess for map image saving and viewing
 
+options = True if len(sys.argv) > 1 else False
 
 PKT_LEN = 4 # length of scan data packet
 ENC_LEN = 8 # length of encoder data packet
@@ -62,7 +63,7 @@ deg2rad = np.pi/180.0
 maxVal = 10 # depth of data points on map (higher=more sure that it exists)
 robotVal = maxVal + 1 # value of robot in map storage
 numSamp = 400 # desired number of valid points per scan
-# updateHz = 1980points/sec * scan/400points
+# updateHz = 1980points/sec * scan/numSamp
 
 commandRate = 100 # minimum time between auto-send commands [ms]
 dataRate = 50 # minimum time between updating data from lidar [ms]
@@ -98,20 +99,23 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
   def __init__(self):
     tk.Tk.__init__(self) # explicitly initialize base class and create window
-    self.geometry('+100+100') # position windows 100,100 pixels from top-left corner
-    self.resetting = False
+    self.wm_title("Aerospace Robotics LIDAR Viewer") # name window
+    if options:
+      self.lower() # bring terminal to front if we need it
+    else:
+      self.lift() # otherwise, bring tk window to front
 
-    # newWindow = tk.Toplevel()
+    self.resetting = False
 
     self.serQueue = queue.Queue() # FIFO queue by default
     self.numLost = tk.StringVar() # status of serThread (should be a queue...)
+
     self.serThread = SerialThread(self.serQueue, self.numLost) # initialize thread object
 
     self.initUI() # create all the pretty stuff in the Tkinter window
     self.restartAll(rootInit=True)
 
   def initUI(self):
-    self.wm_title("Mapping LIDAR") # name window
     self.fig = plt.figure(figsize=(8, 5), dpi=131) # create matplotlib figure
     self.ax = self.fig.add_subplot(111) # add plot to figure
     self.ax.set_title("RPLIDAR Plotting") # name and label plot
@@ -119,7 +123,6 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.ax.set_ylabel("Y Position [mm]")
 
     cmap = plt.get_cmap("binary")
-    # cmap = plt.get_cmap("jet")
     cmap.set_over("red") # robot is set to higher than maxVal
     dummyInitMat = np.zeros((2,2), dtype=int)
     self.myImg = self.ax.imshow(dummyInitMat, interpolation="none", cmap=cmap, vmin=0, vmax=maxVal, # plot data
@@ -173,7 +176,6 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     if askokcancel("Quit?", "Are you sure you want to quit?"):
       self.serThread.stop() # tell serial thread to stop running
       self.quit() # kills interpreter (necessary for some reason)
-      # self.destroy() # ends this instance of a tk object (not sufficient...?)
 
   def saveImage(self):
     self.data.saveImage()
@@ -281,7 +283,6 @@ class Slam(RMHC_SLAM):
     dxy = ticks2mm * (dLeft + dRight)/2 # forward change in position
     dtheta = ticks2deg * (dLeft - dRight)/2 # positive theta is clockwise
 
-    # print dxy/1000, dtheta, dt/1000.0
     return dxy, dtheta, dt/1000.0 # [mm], [deg], [s]
 
 
@@ -315,7 +316,6 @@ class Data():
       try:
         self.matrix[y_pix, x_pix] += self.matrix[y_pix, x_pix] < maxVal # increment value at location if below maximum value
       except IndexError:
-        # pass
         print("scan out of bounds")
 
   def drawRobot(self, size):
@@ -341,7 +341,6 @@ class Data():
           try:
             self.matrix[yLoc+y, xLoc+x] = robotVal
           except IndexError:
-            # pass
             print("robot out of bounds")
 
   def saveImage(self):
@@ -372,7 +371,7 @@ class SerialThread(threading.Thread):
     self.cmdRcvd = False
 
     self.connectToPort() # initialize serial connection with XBee
-    self.talkToXBee() # optional (see function)
+    if options: self.talkToXBee() # optional (see function)
     self.waitForResponse() # start LIDAR and make sure Arduino is sending stuff back to us
 
     self.start() # put serial data into queue
@@ -471,7 +470,6 @@ class SerialThread(threading.Thread):
       # in order sent (bytes comma-separated):                  dist[0:7], dist[8:12] ang[0:3], ang[4:12]
       # in order received (future data chunks comma-separated): dist[0:12]            ang[0:3], ang[4:12]
       pointLine = self.ser.read(PKT_LEN) # distance and angle (blocking)
-      # pointLine = '\x7D\x00\xB4' # 250mm distance and 360deg angle
 
       if pointLine == ENC_FLAG*PKT_LEN:
         self.cmdRcvd = True # ACK from Arduino
@@ -503,6 +501,5 @@ class SerialThread(threading.Thread):
 if __name__ == '__main__':
   root = Root() # create Tkinter window, containing entire App
   root.protocol("WM_DELETE_WINDOW", root.closeWin) # control what happens when a window is closed externally (e.g. by the 'x')
-  # print "window desired:",root.winfo_reqwidth(),root.winfo_reqheight() # get desired size of window
-  # print "window actual:",root.winfo_width(),root.winfo_height() # get actual size of window
+  root.geometry('+100+100') # position windows 100,100 pixels from top-left corner
   root.mainloop() # start Tkinter loop
