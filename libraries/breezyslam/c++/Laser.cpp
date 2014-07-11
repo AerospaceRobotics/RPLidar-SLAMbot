@@ -33,9 +33,9 @@ using namespace std;
 
 Laser::Laser(
     int scanSize,
-    int scanRateHz,
-    int angle_min_degrees,
-    int angle_max_degrees,
+    float scanRateHz,
+    float angle_min_degrees,
+    float angle_max_degrees,
     float distance_no_detection_mm,
     int detection_margin,
     float offset_mm

@@ -70,9 +70,9 @@ typedef struct scan_t
 typedef struct laser_t
 {
     int scan_size;                      /* number of points per scan */
-    int scan_rate_hz;                   /* scans per second */
-    int angle_min_degrees;              /* start angle for scan */
-    int angle_max_degrees;              /* end angle for scan */
+    double scan_rate_hz;                /* scans per second */
+    double angle_min_degrees;           /* start angle for scan */
+    double angle_max_degrees;           /* end angle for scan */
     double distance_no_detection_mm;    /* default value when the laser returns 0 */
     int detection_margin;               /* first scan element to consider */
     double offset_mm;                   /* position of the laser wrt center of rotation */

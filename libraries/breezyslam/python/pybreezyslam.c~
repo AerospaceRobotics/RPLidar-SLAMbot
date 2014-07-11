@@ -202,9 +202,9 @@ typedef struct
     PyObject_HEAD
     
     int scan_size;
-    double scan_rate_hz;
-    double angle_min_degrees;
-    double angle_max_degrees;
+    int scan_rate_hz;
+    int angle_min_degrees;
+    int angle_max_degrees;
     double distance_no_detection_mm;
     int detection_margin;
     double offset_mm;
@@ -245,7 +245,7 @@ Laser_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static int
 Laser_init(Laser *self, PyObject *args, PyObject *kwds)
 {       
-    if (!PyArg_ParseTuple(args,"iddddid", 
+    if (!PyArg_ParseTuple(args,"iiiidid", 
         &self->scan_size,
         &self->scan_rate_hz,
         &self->angle_min_degrees,
@@ -289,11 +289,11 @@ Laser_str(Laser *self)
 static PyMemberDef Laser_members[] = {
     {"scan_size", T_INT, offsetof(Laser, scan_size), 0, 
     "number of rays per scan"},
-    {"scan_rate_hz", T_DOUBLE, offsetof(Laser, scan_rate_hz), 0, 
+    {"scan_rate_hz", T_INT, offsetof(Laser, scan_rate_hz), 0, 
     "laser scan rate in Hertz"},
-    {"angle_min_degrees", T_DOUBLE, offsetof(Laser, angle_min_degrees), 0, 
+    {"angle_min_degrees", T_INT, offsetof(Laser, angle_min_degrees), 0, 
     "minimum laser angle in degrees"},
-    {"angle_max_degrees", T_DOUBLE, offsetof(Laser, angle_max_degrees), 0, 
+    {"angle_max_degrees", T_INT, offsetof(Laser, angle_max_degrees), 0, 
     "maximum laser angle in degrees"},
     {"distance_no_detection_mm", T_DOUBLE, offsetof(Laser, distance_no_detection_mm), 0, 
     "scan distances above this are treated as infinfity"},

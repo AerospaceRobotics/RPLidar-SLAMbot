@@ -53,9 +53,9 @@ public:
     */
     Laser(
         int scan_size,
-        int scan_rate_hz,
-        int angle_min_degrees,
-        int angle_max_degrees,
+        float scan_rate_hz,
+        float angle_min_degrees,
+        float angle_max_degrees,
         float distance_no_detection_mm,
         int detection_margin,
         float offset_mm

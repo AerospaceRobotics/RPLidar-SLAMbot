@@ -23,6 +23,7 @@ Change log
 07-FEB-2014 : Simon D. Levy  - Initial release
 01-MAR-2014 : SDL - Converted millimeters to meters for API
 21-JUN-2014 : SDL - Added support for SSE and NEON
+10-JUL-2014 : SDL - Changed Laser scan rate and angles from int to double
 */
 
 
@@ -472,7 +473,7 @@ laser_string(
     char * str)
 {
     sprintf(str, 
-        "scan_size=%d | scan_rate=%d hz | angle_min=%d deg | angle_max=%d deg | " 
+        "scan_size=%d | scan_rate=%3.3f hz | angle_min=%3.3f deg | angle_max=%3.3f deg | " 
         "distance_no_detection=%7.4f mm | detection_margin=%d | offset=%4.4f m",
         laser.scan_size,
         laser.scan_rate_hz, 
