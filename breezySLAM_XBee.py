@@ -85,7 +85,7 @@ deg2ticks = ticksPerRev/degPerRev * ANGULAR_FLUX # [ticks/deg]
 ticks2deg = degPerRev/ticksPerRev * 1.0/ANGULAR_FLUX # [deg/tick]
 
 
-print("Each pixel is",round(1000.0/mapRes,1),"mm, or",round(1000.0/mapRes/25.4,2),"in")
+print("Each pixel is ",round(1000.0/mapRes,1),"mm, or ",round(1000.0/mapRes/25.4,2),"in.")
 
 def float2int(x):
   return int(0.5 + x)
@@ -100,19 +100,13 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
   def __init__(self):
     tk.Tk.__init__(self) # explicitly initialize base class and create window
     self.wm_title("Aerospace Robotics LIDAR Viewer") # name window
-    if options:
-      self.lower() # bring terminal to front if we need it
-    else:
-      self.lift() # otherwise, bring tk window to front
-
-    self.resetting = False
+    self.lower() # bring terminal to front if we need it
 
     self.serQueue = queue.Queue() # FIFO queue by default
     self.numLost = tk.StringVar() # status of serThread (should be a queue...)
-
-    self.serThread = SerialThread(self.serQueue, self.numLost) # initialize thread object
-
+    self.serThread = SerialThread(self.serQueue, self.numLost) # initialize thread object, getting user input
     self.initUI() # create all the pretty stuff in the Tkinter window
+    self.resetting = False
     self.restartAll(rootInit=True)
 
   def initUI(self):
@@ -124,7 +118,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
     cmap = plt.get_cmap("binary")
     cmap.set_over("red") # robot is set to higher than maxVal
-    dummyInitMat = np.zeros((2,2), dtype=int)
+    dummyInitMat = np.zeros((2,2), dtype=int) # need to plot something to setup tkinter before dependent objects
     self.myImg = self.ax.imshow(dummyInitMat, interpolation="none", cmap=cmap, vmin=0, vmax=maxVal, # plot data
               extent=[-rad, rad, -rad, rad]) # extent sets labels by matching limits to edges of matrix
     self.ax.set_xlim(-viewSize*1000,viewSize*1000) # pre-zoom image to defined default viewSize
@@ -249,7 +243,8 @@ class Slam(RMHC_SLAM):
 
   def __init__(self):
     self.scanLen = 361 # number of points per scan to be passed into BreezySLAM
-    RMHC_SLAM.__init__(self, Laser(self.scanLen, 5.5, 0, +360, 7000, 0, -35), 2*mapSize, 1000/mapRes, random_seed=0xabcd)
+    laser = Laser(self.scanLen, 5.5, 0, +360, 7000, 0, -35) # [], rate [hz], min [deg], max [deg], max [mm], margin [], offset [mm]
+    RMHC_SLAM.__init__(self, laser, 2*mapSize+1, 1000/mapRes, random_seed=0xabcd) # [Laser], map size [pix], resolution [mm/pix], seed []
     self.prevEncPos = () # robot encoder data
     self.currEncPos = () # left wheel [ticks], right wheel [ticks], timestamp [ms]
 
