@@ -1,10 +1,12 @@
-Laser scan_rate_hz no longer accepts float (how useful is this value, anyway?)
+Jun 3rd 2014 to Jul 7th 2014 changes:
+
+Laser scan_rate_hz no longer accepts float
 
 Laser moved from .robots to .components
 
 Laser's init attributes now in mm
 
-assuming a positive offset_mm means the LIDAR sensor is toward the front of the robot, it appears that update() thinks the robot rotates around the LIDAR unit:
+Assuming a positive offset_mm means the LIDAR sensor is toward the front of the robot, it appears that update() thinks the robot rotates around the LIDAR unit:
   When I have my robot turn about a point, the x,y positions returned from update() trace a circle that could describe the center of the robot, if the robot were rotating about the LIDAR unit
   If I negate offset_mm from what it should be (positive value describes a sensor toward the back of the robot), the x,y positions from update() describe the change in position of the LIDAR unit from its initial position
 So, is update() supposed to return the robot's position, or the LIDAR unit's position?  The latter would be more useful and appears to be the intention
@@ -15,4 +17,12 @@ getpos() returns in mm (update() was meters)
 update() now accepts mm (was meters)
 update() appears to be unaffected by new lidar data (only responds to odometry)
 
-CoreSLAM does not work on its own anymore (_updateMapAndPointcloud not defined) <-- intentional?
+CoreSLAM does not work on its own anymore (use its subclasses, which have _updateMapAndPointcloud)
+
+------------------------------------------------------------------------------
+
+Jul 7th 2014 to Jul 10th 2014 changes:
+
+Laser scan_rate_hz accepts floats again
+
+update() does not appear to use LIDAR data anymore.  Odometry still works great however...
