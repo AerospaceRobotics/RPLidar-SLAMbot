@@ -10,7 +10,6 @@
 import sys
 print("Python {}".format('.'.join([str(el) for el in sys.version_info[0:3]])))
 
-# from breezyslam.algorithms import CoreSLAM
 from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.components import Laser
 from breezyslam.robots import WheeledRobot
@@ -19,21 +18,21 @@ if sys.version_info[0] < 3: # 2.x
   print("Getting Python 2 modules")
   import Tkinter as tk
   from tkMessageBox import askokcancel
-  import Queue as queue # deal with sending data across threads
+  import Queue as queue
 else: # 3.x
   print("Getting Python 3 modules")
   import tkinter as tk
   from tkinter.messagebox import askokcancel
-  import queue # deal with sending data across threads
+  import queue
   def raw_input(inStr): return input(inStr)
 
-import time # wait for robot to do things that take time
+import time
 import threading # allow serial checking to happen on top of tkinter interface things
 
-import serial # bind hardware serial
+import serial
 from serial.tools import list_ports # get computer's port info
 import struct # parse incoming serial data
-import numpy as np # create map array
+import numpy as np # map array
 from scipy.ndimage.interpolation import rotate
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
@@ -85,7 +84,7 @@ deg2ticks = ticksPerRev/degPerRev * ANGULAR_FLUX # [ticks/deg]
 ticks2deg = degPerRev/ticksPerRev * 1.0/ANGULAR_FLUX # [deg/tick]
 
 
-print("Each pixel is ",round(1000.0/mapRes,1),"mm, or ",round(1000.0/mapRes/25.4,2),"in.")
+print("Each pixel is " + str(round(1000.0/mapRes,1)) + "mm, or " + str(round(1000.0/mapRes/25.4,2)) + "in.")
 
 def float2int(x):
   return int(0.5 + x)
@@ -104,9 +103,10 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.wm_title("Aerospace Robotics LIDAR Viewer") # name window
     self.lower() # bring terminal to front
 
-    self.serQueue = queue.Queue() # FIFO queue by default
+    self.RXQueue = queue.Queue() # data from serial to root # FIFO queue by default
+    self.TXQueue = queue.Queue() # data from root to serial # FIFO queue by default
     self.numLost = tk.StringVar() # status of serThread (should be a queue...)
-    self.serThread = SerialThread(self.serQueue) # initialize thread object, getting user input
+    self.serThread = SerialThread(self.RXQueue, self.TXQueue) # initialize thread object, getting user input
     self.initUI() # create all the pretty stuff in the Tkinter window
     self.resetting = False
     self.restartAll(rootInit=True)
@@ -194,15 +194,15 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     # then, send it in the proper manner corresponding to the command
     if strIn: # string is not empty
       if not loop: # manual-send mode of function
-        self.serThread.writeCmd(strIn)
+        self.TXQueue.put(strIn)
         self.entryBox.delete(0,"end") # clear box after manual-send
 
       elif strIn in 'WASD': # auto-send continuous drive commands (capitalized normal commands)
-        self.serThread.writeCmd(strIn)
+        self.TXQueue.put(strIn)
 
       elif resend: # auto-resend command until ACK received
         resendCount += 1 # keep track of how many times we're resending command
-        self.serThread.writeCmd(strIn)
+        self.TXQueue.put(strIn)
 
       else:
         pass # wait until manual-send for other commands
@@ -210,7 +210,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     if loop and not self.resetting: self.after(commandRate, lambda: self.sendCommand(resendCount=resendCount)) # tkinter interrupt function
 
   def updateData(self, init=False):
-    if self.serQueue.qsize() > numSamp or init:
+    if self.RXQueue.qsize() > numSamp or init: # ready to pull new scan data
       self.getScanData() # pull LIDAR data via serial from robot
       if init: self.slam.prevEncPos = self.slam.currEncPos # set both values the first time through
 
@@ -230,7 +230,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
   def getScanData(self): # 50ms
     i = 0
     while i < numSamp:
-      queueItem = self.serQueue.get()
+      queueItem = self.RXQueue.get()
       if isinstance(queueItem[0], float):
         self.data.dists[i], self.data.angs[i] = queueItem
         i += 1
@@ -239,7 +239,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       elif isinstance(queueItem, str):
         self.numLost.set(queueItem)
       else:
-        print("serQueue broken")
+        print("RXQueue broken")
 
 
 class Slam(RMHC_SLAM):
@@ -362,9 +362,10 @@ class Data():
 
 
 class SerialThread(threading.Thread):
-  def __init__(self, serQueue):
+  def __init__(self, RXQueue, TXQueue):
     super(SerialThread, self).__init__() # nicer way to initialize base class (only works with new-style classes)
-    self.serQueue = serQueue
+    self.RXQueue = RXQueue
+    self.TXQueue = TXQueue
     self._stop = threading.Event() # create flag
     self.cmdSent = False
     self.cmdRcvd = False
@@ -461,7 +462,12 @@ class SerialThread(threading.Thread):
   def run(self):
     tstart = time.clock()
     lagged, missed, total = 0,0,0
-    while not self._stop.isSet(): # pulls and processes all incoming serial data
+    while not self._stop.isSet(): # pulls and processes all incoming and outgoing serial data
+      try:
+        self.writeCmd(self.TXQueue.get_nowait())
+      except queue.Empty:
+        pass
+
       if self.ser.inWaiting() > 300*PKT_LEN: # data in buffer is too old to be useful (300 packets old)
         lagged += self.ser.inWaiting()/PKT_LEN
         self.ser.flushInput()
@@ -470,30 +476,33 @@ class SerialThread(threading.Thread):
       # in order received (future data chunks comma-separated): dist[0:12]            ang[0:3], ang[4:12]
       pointLine = self.ser.read(PKT_LEN) # distance and angle (blocking)
 
+      # check for command ACK
       if pointLine == ENC_FLAG*PKT_LEN:
         self.cmdRcvd = True # ACK from Arduino
         continue # move to the next point
 
+      # check for encoder data packet
       if pointLine[0:2] == ENC_FLAG*2:
         pointLine += self.ser.read(ENC_LEN-PKT_LEN) # read more bytes to complete longer packet
-        self.serQueue.put(struct.unpack('<hhH',pointLine[2:ENC_LEN+1])) # little-endian 2 signed shorts, 1 unsigned short
-        continue
+        self.RXQueue.put(struct.unpack('<hhH',pointLine[2:ENC_LEN+1])) # little-endian 2 signed shorts, 1 unsigned short
+        continue # move to the next point
 
-      bytes12, byte3 = struct.unpack('<HB',pointLine[0:PKT_LEN-1]) # little-endian 2 bytes and 1 byte
-      distCurr = (bytes12 & MASK)/DFAC # 12 least-significant (sent first) bytes12 bits
-      angleCurr = ((bytes12 & ~MASK) >> 12 | byte3 << 4)/AFAC # 4 most-significant (sent last) bytes2 bits, 8 byte1 bits
-
-      if pointLine[PKT_LEN-1] == SCN_FLAG and 100 < distCurr < 6000 and angleCurr <= 360: # data matches what was transmitted
-        total += 1
-        self.serQueue.put((distCurr, angleCurr))
-
-      else: # invalid point received (communication error)
-        missed += 1
-        while self.ser.read(1) != SCN_FLAG: pass # delete current packet up to and including SCN_FLAG byte
+      # check for lidar data packet
+      if pointLine[PKT_LEN-1] == SCN_FLAG:
+        bytes12, byte3 = struct.unpack('<HB',pointLine[0:PKT_LEN-1]) # little-endian 2 bytes and 1 byte
+        distCurr = (bytes12 & MASK)/DFAC # 12 least-significant (sent first) bytes12 bits
+        angleCurr = ((bytes12 & ~MASK) >> 12 | byte3 << 4)/AFAC # 4 most-significant (sent last) bytes2 bits, 8 byte1 bits
+        if 100 < distCurr < 6000 and angleCurr <= 360: # data matches what was transmitted
+          total += 1
+          self.RXQueue.put((distCurr, angleCurr))
+        else: # invalid point received (communication error)
+          missed += 1
+          while self.ser.read(1) != SCN_FLAG: pass # delete current packet up to and including SCN_FLAG byte
+        continue # move to the next point
 
       if time.clock() > tstart + 1.0: # 1 second later
         tstart += 1.0
-        self.serQueue.put("Last sec: "+str(lagged)+" lagged, "+str(missed)+" errors out of "+str(total)+" points")
+        self.RXQueue.put("Last sec: "+str(lagged)+" lagged, "+str(missed)+" errors out of "+str(total)+" points")
         lagged, missed, total = 0,0,0
 
 
