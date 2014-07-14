@@ -42,6 +42,10 @@ import matplotlib.pyplot as plt
 
 options = True if len(sys.argv) > 1 else False
 
+BUF_LEN = 20 # points per transmit packet
+NUM_SAMP = 400 # desired number of valid points per scan
+NUM_SAMP_GROSS = int(400 * ((BUF_LEN+1.0) / BUF_LEN)) # number of serial packets needed for 1 sample (including encoder packets)
+
 PKT_LEN = 4 # length of scan data packet
 ENC_LEN = 8 # length of encoder data packet
 ENC_FLAG = '\xFE' # response indicator (&thorn)
@@ -61,8 +65,7 @@ mm2pix = mapRes/1000.0 # [pix/mm]
 deg2rad = np.pi/180.0
 maxVal = 10 # depth of data points on map (higher=more sure that it exists)
 robotVal = maxVal + 1 # value of robot in map storage
-numSamp = 400 # desired number of valid points per scan
-# updateHz = 1980points/sec * scan/numSamp
+# updateHz = 1980points/sec * scan/NUM_SAMP
 
 commandRate = 100 # minimum time between auto-send commands [ms]
 dataRate = 50 # minimum time between updating data from lidar [ms]
@@ -105,11 +108,10 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
     self.RXQueue = queue.Queue() # data from serial to root # FIFO queue by default
     self.TXQueue = queue.Queue() # data from root to serial # FIFO queue by default
-    self.numLost = tk.StringVar() # status of serThread (should be a queue...)
-    self.serThread = SerialThread(self.RXQueue, self.TXQueue) # initialize thread object, getting user input
+    self.serThread = SerialThread(self.RXQueue, self.TXQueue) # initialize thread object, getting user input if required
     self.initUI() # create all the pretty stuff in the Tkinter window
     self.resetting = False
-    self.restartAll(rootInit=True)
+    self.restartAll(rootInit=True) # contains all initialization that needs to be re-done in case of a soft reset
     self.lift() # bring tk window to front if initialization finishes
 
   def initUI(self):
@@ -149,16 +151,17 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.entryBox = tk.Entry(master=self)
     self.entryBox.pack(side="left", padx = 5)
     tk.Button(self, text="Send (enter)", command=lambda: self.sendCommand(loop=False)).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+    self.numLost = tk.StringVar() # status of serThread
     tk.Label(self, textvariable=self.numLost).pack(side="left", padx=5, pady=5)
     tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
 
-  def restartAll(self, rootInit=False, funcStep=0):
+  def restartAll(self, rootInit=False, funcStep=0): # two-part soft reset function
     if funcStep == 0:
-      if not rootInit: # reset called during program
-        self.resetting = True # stop currently running loops
-        self.after(2000, lambda: self.restartAll(rootInit=rootInit, funcStep=1)) # let other tkinter things run
-      else: # don't need to stop currently running loops, so go right to second half of restart
+      if rootInit: # don't need to stop currently running loops, so go right to second half of restart
         self.restartAll(rootInit=rootInit, funcStep=1)
+      else: # reset called during program
+        self.resetting = True # stop currently running loops
+        self.after(2000, lambda: self.restartAll(rootInit=rootInit, funcStep=1)) # release processor to let it wrap things up elsewhere
 
     elif funcStep == 1:
       if not rootInit: # reset called during program
@@ -174,7 +177,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       self.serThread.stop() # tell serial thread to stop running
       self.quit() # kills interpreter (necessary for some reason)
 
-  def saveImage(self):
+  def saveImage(self): # function prototype until data is initialized
     self.data.saveImage()
 
   def sendCommand(self, loop=True, resendCount=0): # loop indicates how function is called: auto (True) or manual (False)
@@ -210,7 +213,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     if loop and not self.resetting: self.after(commandRate, lambda: self.sendCommand(resendCount=resendCount)) # tkinter interrupt function
 
   def updateData(self, init=False):
-    if self.RXQueue.qsize() > numSamp or init: # ready to pull new scan data
+    if self.RXQueue.qsize() > NUM_SAMP_GROSS or init: # ready to pull new scan data
       self.getScanData() # pull LIDAR data via serial from robot
       if init: self.slam.prevEncPos = self.slam.currEncPos # set both values the first time through
 
@@ -229,7 +232,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
   def getScanData(self): # 50ms
     i = 0
-    while i < numSamp:
+    while i < NUM_SAMP:
       queueItem = self.RXQueue.get()
       if isinstance(queueItem[0], float):
         self.data.dists[i], self.data.angs[i] = queueItem
@@ -257,7 +260,7 @@ class Slam(RMHC_SLAM):
     distVec = [0.0 for i in range(self.scanLen)]
     velocities = None # odometry data, passed in from robot's encoders
 
-    for i in range(numSamp): # create breezySLAM-compatible data from raw scan data
+    for i in range(NUM_SAMP): # create breezySLAM-compatible data from raw scan data
       index = float2int(angs[i])
       if not 0 <= index <= 360: continue
       distVec[index] = dists[i] if distVec[index] == 0 else (dists[i]+distVec[index])/2
@@ -294,8 +297,8 @@ class Data():
 
   def __init__(self):
     self.matrix = np.zeros((2*mapSize+1, 2*mapSize+1), dtype=int) # initialize data matrix
-    self.dists = [0.0 for ind in range(numSamp)] # current scan data
-    self.angs = [0.0 for ind in range(numSamp)]
+    self.dists = [0.0 for ind in range(NUM_SAMP)] # current scan data
+    self.angs = [0.0 for ind in range(NUM_SAMP)]
     self.robot_mm0 = () # robot location data
     self.robot_mm = () # x [mm], y [mm], th [deg], defined from lower-left corner of map
     self.robot_pix = () # x, y [pix]
@@ -310,7 +313,7 @@ class Data():
     self.robot_pix = (float2int(xRobot_pix), float2int(yRobot_pix))
     self.drawRobot(1) # new robot position
 
-    for i in range(numSamp):
+    for i in range(NUM_SAMP):
       x_pix = float2int( mapSize + ( xRobot_mm + self.dists[i]*np.sin((self.angs[i]+Tdeg)*deg2rad) )*mm2pix ) # pixel location of scan point
       y_pix = float2int( mapSize - ( yRobot_mm + self.dists[i]*np.cos((self.angs[i]+Tdeg)*deg2rad) )*mm2pix ) # point wrt robot + robot wrt xO
       try:
@@ -415,13 +418,13 @@ class SerialThread(threading.Thread):
     tryCount = 0
     while True:
       self.ser.write('l') # tell robot to start lidar
-      print("Start command sent to LIDAR... waiting for response...")
+      print("Command sent to robot... waiting for response... check robot power...")
       time.sleep(2)
 
       if self.ser.inWaiting(): break # until it sends something back
 
       tryCount += 1
-      if tryCount >= 5: sys.exit("No response received from Arduino.")
+      if tryCount >= 5: sys.exit("No response received from Arduino.") # only try 5 times (10 seconds) before giving up
 
     print("Data received... live data processing commencing...")
 
@@ -460,9 +463,14 @@ class SerialThread(threading.Thread):
       self.ser.write(command) # otherwise send only first character
 
   def run(self):
-    tstart = time.clock()
+    tstart = time.time()
     lagged, missed, total = 0,0,0
     while not self._stop.isSet(): # pulls and processes all incoming and outgoing serial data
+      if time.time() > tstart + 1.0: # report status of serial thread to root every second
+        tstart += 1.0
+        self.RXQueue.put("Last sec: "+str(lagged)+" lagged, "+str(missed)+" errors out of "+str(total)+" points")
+        lagged, missed, total = 0,0,0
+
       try:
         self.writeCmd(self.TXQueue.get_nowait())
       except queue.Empty:
@@ -499,11 +507,6 @@ class SerialThread(threading.Thread):
           missed += 1
           while self.ser.read(1) != SCN_FLAG: pass # delete current packet up to and including SCN_FLAG byte
         continue # move to the next point
-
-      if time.clock() > tstart + 1.0: # 1 second later
-        tstart += 1.0
-        self.RXQueue.put("Last sec: "+str(lagged)+" lagged, "+str(missed)+" errors out of "+str(total)+" points")
-        lagged, missed, total = 0,0,0
 
 
 if __name__ == '__main__':
