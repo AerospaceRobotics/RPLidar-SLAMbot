@@ -99,15 +99,18 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
   def __init__(self):
     tk.Tk.__init__(self) # explicitly initialize base class and create window
+    self.protocol("WM_DELETE_WINDOW", self.closeWin) # control what happens when a window is closed externally (e.g. by the 'x')
+    self.geometry('+100+100') # position windows 100,100 pixels from top-left corner
     self.wm_title("Aerospace Robotics LIDAR Viewer") # name window
-    self.lower() # bring terminal to front if we need it
+    self.lower() # bring terminal to front
 
     self.serQueue = queue.Queue() # FIFO queue by default
     self.numLost = tk.StringVar() # status of serThread (should be a queue...)
-    self.serThread = SerialThread(self.serQueue, self.numLost) # initialize thread object, getting user input
+    self.serThread = SerialThread(self.serQueue) # initialize thread object, getting user input
     self.initUI() # create all the pretty stuff in the Tkinter window
     self.resetting = False
     self.restartAll(rootInit=True)
+    self.lift() # bring tk window to front if initialization finishes
 
   def initUI(self):
     self.fig = plt.figure(figsize=(8, 5), dpi=131) # create matplotlib figure
@@ -230,12 +233,14 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       queueItem = self.serQueue.get()
       if isinstance(queueItem[0], float):
         self.data.dists[i], self.data.angs[i] = queueItem
+        i += 1
       elif isinstance(queueItem[1], int):
         self.slam.currEncPos = queueItem
+      elif isinstance(queueItem, str):
+        self.numLost.set(queueItem)
       else:
         print("serQueue broken")
-      i += 1
-    
+
 
 class Slam(RMHC_SLAM):
   # updateSlam takes LIDAR data and uses BreezySLAM to calculate the robot's new position
@@ -357,10 +362,9 @@ class Data():
 
 
 class SerialThread(threading.Thread):
-  def __init__(self, serQueue, numLost):
+  def __init__(self, serQueue):
     super(SerialThread, self).__init__() # nicer way to initialize base class (only works with new-style classes)
     self.serQueue = serQueue
-    self.numLost = numLost
     self._stop = threading.Event() # create flag
     self.cmdSent = False
     self.cmdRcvd = False
@@ -489,13 +493,11 @@ class SerialThread(threading.Thread):
 
       if time.clock() > tstart + 1.0: # 1 second later
         tstart += 1.0
-        self.numLost.set("Last sec: "+str(lagged)+" lagged, "+str(missed)+" errors out of "+str(total)+" points")
+        self.serQueue.put("Last sec: "+str(lagged)+" lagged, "+str(missed)+" errors out of "+str(total)+" points")
         lagged, missed, total = 0,0,0
 
 
 if __name__ == '__main__':
   root = Root() # create Tkinter window, containing entire App
-  root.protocol("WM_DELETE_WINDOW", root.closeWin) # control what happens when a window is closed externally (e.g. by the 'x')
-  root.geometry('+100+100') # position windows 100,100 pixels from top-left corner
   root.mainloop() # start Tkinter loop
 
