@@ -1,0 +1,17 @@
+Apply patches from: C:\Program Files (x86)\Arduino\hardware\arduino\
+
+C:\Program Files (x86)\Arduino\hardware\arduino\boards.txt
+
+C:\Program Files (x86)\Arduino\hardware\arduino\variants\mega\pins_arduino.h
+
+C:\Program Files (x86)\Arduino\hardware\arduino\variants\seeed\pins_arduino.h
+
+
+
+Apply patches from: /usr/share/arduino/hardware/arduino/
+
+/usr/share/arduino/hardware/arduino/boards.txt
+
+/usr/share/arduino/hardware/arduino/variants/mega/pins_arduino.h
+
+/usr/share/arduino/hardware/arduino/variants/seeed/pins_arduino.h

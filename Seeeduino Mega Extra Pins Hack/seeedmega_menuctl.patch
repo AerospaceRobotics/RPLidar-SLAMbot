@@ -1,0 +1,32 @@
+Index: arduino/hardware/arduino
+===================================================================
+--- arduino/hardware/arduino/boards.txt  (1.0.5)
++++ arduino/hardware/arduino/boards.txt  (edited copy)
+@@ -125,6 +125,27 @@
+ 
+ ##############################################################
+ 
++seeed2560.name=Seeeduino Mega
++
++seeed2560.upload.protocol=wiring
++seeed2560.upload.maximum_size=258048
++seeed2560.upload.speed=115200
++
++seeed2560.bootloader.low_fuses=0xFF
++seeed2560.bootloader.high_fuses=0xD8
++seeed2560.bootloader.extended_fuses=0xFD
++seeed2560.bootloader.path=stk500v2
++seeed2560.bootloader.file=stk500boot_v2_mega2560.hex
++seeed2560.bootloader.unlock_bits=0x3F
++seeed2560.bootloader.lock_bits=0x0F
++
++seeed2560.build.mcu=atmega2560
++seeed2560.build.f_cpu=16000000L
++seeed2560.build.core=arduino
++seeed2560.build.variant=seeed
++
++##############################################################
++
+ mega.name=Arduino Mega (ATmega1280)
+ 
+ mega.upload.protocol=arduino
