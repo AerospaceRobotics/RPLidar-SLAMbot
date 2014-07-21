@@ -1,10 +1,20 @@
-/*  This file is the file for upload to a MEGA-compatible microcontroller
-  for use with the Aerospace Robotics SLAM Rover project. 
-  Do whatever you want with this code as long as it doesn't kill people.
-  No liability et cetera.
-  http://www.aerospacerobotics.com/             June-August 2014
-                      Michael Searing & Bill Warner
+/*
+breezySLAM_XBee.ino - rover code for Aerospace Robots SLAMbot project
 
+Copyright (C) 2014 Michael Searing
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 // This sketch code is based on the RPLIDAR driver library provided by RoboPeak
