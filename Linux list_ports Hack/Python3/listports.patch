@@ -1,7 +1,7 @@
-Index: pyserial/serial/tools/list_ports_posix.py
+Index: serial/tools/list_ports_posix.py
 ===================================================================
---- pyserial/serial/tools/list_ports_posix.py  (revision 455)
-+++ pyserial/serial/tools/list_ports_posix.py  (working copy)
+--- serial/tools/list_ports_posix.py  (revision 455)
++++ serial/tools/list_ports_posix.py  (working copy)
 @@ -68,12 +68,12 @@
          try:
              desc = popen(['lsusb', '-v', '-s', '%s:%s' % (bus, dev)])
