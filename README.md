@@ -73,8 +73,11 @@ Contains the location of the files we're modifying, on both Windows and Ubuntu. 
 ### seeedmega_menuctl.patch
 Add "Seeeduino Mega" board type to Arduino IDE menu.
 Created with `diff -u boards_old.txt boards_new.txt > seeedmega_menuctl.patch`.
+
 To use:
+
 `cd /usr/share/arduino/hardware/arduino/`
+
 `sudo patch boards.txt < /[path of patch file on your machine]/seeedmega_menuctl.patch`.
 #### boards_old.txt
 This is our backup of the `boards.txt` file.
@@ -83,9 +86,13 @@ This is what your `boards.txt` file should look like after applying the patch.
 ### seeedmega_pindef.patch
 Add new board type defining the Seeeduino Mega's pin definitions.
 Created with `diff -u mega/pins_arduino.h seeed/pins_arduino.h > seeedmega_pindef.patch`.
+
 To use:
+
 `cd /usr/share/arduino/hardware/arduino/variants/`
+
 `sudo cp -R mega seeed`
+
 `sudo patch seeed/pins_arduino.h < /[path of patch file on your machine]/seeedmega_pindef.patch`.
 #### mega/pins_arduino.h
 This is our backup of the `mega/pins_arduino.h` file.
