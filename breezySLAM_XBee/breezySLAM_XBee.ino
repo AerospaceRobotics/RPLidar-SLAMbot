@@ -11,7 +11,11 @@
 #include <Encoder.h>
 #include <RPLidar.h>
 
-// Output pin Declaration:
+// Macros
+#define float2int(x) ((int) (0.5 + x))
+#define sgn(x) ((0 < x) - (x < 0))
+
+// Output pins
 const int RPLIDAR_MOTOR = 10; // PWM pin sets RPLIDAR motor speed via MOTOCTRL signal
 const int LEFT_ENABLE = 6, LEFT_PHASE = 7, RIGHT_ENABLE = 9, RIGHT_PHASE = 4;
 const int MOTOR_MODE = 8; // Motor Controller Mode: HIGH = Phase-Enable, LOW = In-In
@@ -19,37 +23,43 @@ const int HEART_LED = 13;
 const int outPins[] = {RPLIDAR_MOTOR, LEFT_ENABLE, LEFT_PHASE,
   RIGHT_ENABLE, RIGHT_PHASE, MOTOR_MODE, HEART_LED};
 
-// Input Pin Declaration:
+// Interrupt pins
 const int LEFT_ENCODER_1 = 3, LEFT_ENCODER_2 = 2;
 const int RIGHT_ENCODER_1 = 18, RIGHT_ENCODER_2 = 19;
 
 // Other Constants (in C++, static const is redundant, ie same as const; extern const is opposite):
-#define ENC_FLAG '\xFE' // response indicator (&thorn)
-#define SCN_FLAG '\xFF' // end line terminator (&yuml)
-const float dFac = 0.5; // distance resolution factor [1/mm]
-const unsigned short aFac = 8; // angle resolution factor [1/deg]
-const unsigned short DIST_MIN = 100*dFac; // minimum distance, factored
-const unsigned short DIST_MAX = 6000*dFac; // maximum distance, factored
-
-const unsigned short PKT_SIZE = 4; // bytes per point
+// Packet constants (shared with base station)
+const unsigned char ENC_FLAG = '\xFE' // encoder data flag (&thorn)
+const unsigned char SCN_FLAG = '\xFF' // scan data flag (&yuml)
 const unsigned short BUF_LEN = 20; // points per transmit packet
+const unsigned short PKT_SIZE = 4; // bytes per point
 const unsigned short BUF_SIZE = PKT_SIZE * BUF_LEN; // bytes per transmit packet
+const float DFAC = 0.5; // distance resolution factor [1/mm]
+const unsigned short AFAC = 8; // angle resolution factor [1/deg]
+#define XBEE_BAUD 250000 // maximum baud rate allowed by Arduino and XBee [hz]
+const unsigned short DIST_MIN = 100*DFAC; // minimum distance, scaled to TX value
+const unsigned short DIST_MAX = 6000*DFAC; // maximum distance, scaled to TX value
+const unsigned short ANG_MIN = 0*AFAC; // minimum scan angle, scaled to TX value
+const unsigned short ANG_MAX = 360*AFAC; // maximum scan angle, scaled to TX value
 
+// Motor constants
 const unsigned short MINSPEED = 150; // minimum functional motor speed
 const unsigned short MAXSPEED = 250; // maximum allowable motor speed
 const unsigned short TARG = 360; // 360 points per revolution
+
+// Protocol constants
 const unsigned short MASK1 = B11111111; // 0000000011111111
 const unsigned short MASK2 = B00001111 << 8; // 0000111100000000
 const unsigned short MASK3 = B00001111; // 0000000000001111
 const unsigned short MASK4 = B11111111 << 4; // 0000111111110000
 
-// Scan data:
+// Scan data initialization
 unsigned short dist;
 unsigned short ang;
 bool startBit;
 // byte qual;
 
-// Counters:
+// Counter initialization
 unsigned long long nextBeat;
 int beatDuration = 50; // Heartbeat timing loop (ms)
 unsigned short ind = 0; // counter of number of scans in current revolution
@@ -63,15 +73,15 @@ int driveError = 0; // positive error = left wheel gone too far
 int bufferIndex = 0; // where in the software buffer are we?
 byte softBuffer[BUF_SIZE] = {}; // store points to send in BUF_LEN-packet bursts
 
-// State Variables:
-bool updatingDriving = false; // Use encoders to verify drive goal?
+// State variable initialization
+bool updatingDriving = false; // Should we use encoders to verify drive goal?
 bool sleeping = false; // Do nothing except check for wake up command
 bool runLIDAR = false; // Do stuff with LIDAR?
 bool heartState = false; // Current state of heartbeat LED
 bool phaseMotorDriving = true; // True: Phase-Enable; False: In-In (for motor driver)
 bool debugXBee = false; // Should we let the computer talk directly to the XBee?
 
-// Control Values:
+// Control value initialization
 unsigned char motorspeed = 237; // approx motor speed for 360 readings per revolution
 int straightness = 1; // 'P' constant for drive correction
 int turnDist = 150; // encoder ticks for each wheel when turning (~30deg)
@@ -84,7 +94,7 @@ char inChar;
 char inCmd[10] = {};
 unsigned short goal = 0;
 
-// Create objects
+// Other object initialization
 RPLidar lidar;
 Encoder leftEncoder(LEFT_ENCODER_1, LEFT_ENCODER_2);
 Encoder rightEncoder(RIGHT_ENCODER_1, RIGHT_ENCODER_2);
@@ -96,12 +106,13 @@ HardwareSerial & xbeeSer = Serial3;
 
 
 // ---------------------Main Methods--------------------- //
+// Note that Arduino both defines main() and makes function prototypes for us
 
 
 void setup() {
-  if(debugXBee) { pcSer.begin(250000); } // if connected to computer, assume talking to XBee // 'if' broken
+  if(debugXBee) { pcSer.begin(XBEE_BAUD); } // if connected to computer, assume talking to XBee // 'if' broken
   lidar.begin(lidarSer); // bind RPLIDAR driver to arduino Serial2
-  xbeeSer.begin(250000); // initialize communication with xBee
+  xbeeSer.begin(XBEE_BAUD); // initialize communication with xBee
   xbeeSer.setTimeout(5); // used by parseInt()
 
   for (int i=0; i<sizeof(outPins)/sizeof(i); i++) {
@@ -140,10 +151,6 @@ void loop() { // 16us
 // ---------------------Sub Methods---------------------- //
 
 
-int sgn(int val) { // for int type, find sign (int -1,0,1)
-  return (int(0) < val) - (val < int(0));
-}
-
 bool beatHeart(bool & heartState) {
   heartState = !heartState;
   digitalWrite(HEART_LED, heartState);
@@ -151,12 +158,12 @@ bool beatHeart(bool & heartState) {
 
 // LIDAR Functions
 void pullScanData(unsigned short & dist, unsigned short & ang, bool & startBit) {
-  dist = (unsigned short) (dFac*lidar.getCurrentPoint().distance); // Q13.-1 distance [2mm]
-  ang = (unsigned short) (aFac*lidar.getCurrentPoint().angle + 0.5f); // Q9.3 round(8*angle) [0.125deg]
+  dist = (unsigned short) (DFAC*lidar.getCurrentPoint().distance); // Q13.-1 // distance [2mm]
+  ang = (unsigned short) float2int(AFAC*lidar.getCurrentPoint().angle); // Q9.3 // angle [0.125deg]
   startBit = lidar.getCurrentPoint().startBit; // new scan?
 }
 void writeScanData(const unsigned short & dist, const unsigned short & ang) { // little-endian
-  if(dist > DIST_MIN and dist < DIST_MAX and ang <= 360*aFac) {
+  if(dist > DIST_MIN and dist < DIST_MAX and ang <= ANG_MAX) {
     softBuffer[bufferIndex + 0] = dist & MASK1; // least significant dist bits
     softBuffer[bufferIndex + 1] = (dist & MASK2) >> 8 | (ang & MASK3) << 4; // most significant dist bits, least significant ang bits
     softBuffer[bufferIndex + 2] = (ang & MASK4) >> 4; // most significant ang bits
@@ -178,7 +185,7 @@ void writeScanData(const unsigned short & dist, const unsigned short & ang) { //
 }
 void checkScanRate(unsigned short & ind, unsigned char & motorspeed, const bool & startBit) {
   if(startBit) {
-    // maintain 360 readings per revolution to minimize SLAM error
+    // maintain TARG readings per revolution to minimize SLAM error
     if(ind > TARG + 1 and motorspeed < MAXSPEED) {analogWrite(RPLIDAR_MOTOR, ++motorspeed);} // too many readings
     else if(ind < TARG - 1 and motorspeed > MINSPEED) {analogWrite(RPLIDAR_MOTOR, --motorspeed);} // too few readings
     ind = 0; // reset counter
@@ -239,7 +246,7 @@ void checkXBeeInput() {
     zeroEncoders(); // reset the encoders in preparation for a new driving command
     updatingDriving = true; // tell main loop to monitor driving status
     goal = xbeeSer.parseInt(); // get associated value // returns 0 if no int found after 2ms
-    for(int i=0; i<PKT_SIZE; i++) { xbeeSer.write(ENC_FLAG); } // command received
+    for(int i=0; i<PKT_SIZE; i++) { xbeeSer.write(ENC_FLAG); } // command received, send ACK
   } else if(inChar == 'W' or inChar == 'A' or inChar == 'S' or inChar == 'D') {
     zeroEncoders(); // reset the encoders in preparation for a new driving command
     updatingDriving = true; // tell main loop to monitor driving status
@@ -265,7 +272,7 @@ void checkXBeeInput() {
   } else if(inChar == 'v') {
     candidate = xbeeSer.parseInt();
     if( candidate>=0 && candidate<=255 ) { AMPLITUDE = candidate; }
-    for(int i=0; i<PKT_SIZE; i++) { xbeeSer.write(ENC_FLAG); } // command received
+    for(int i=0; i<PKT_SIZE; i++) { xbeeSer.write(ENC_FLAG); } // command received, send ACK
   }
 
   while(xbeeSer.available()>0) {xbeeSer.read();}; // clear all other incoming data
