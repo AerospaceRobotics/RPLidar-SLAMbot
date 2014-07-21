@@ -1,14 +1,30 @@
 #!/usr/bin/env python
 
-# This file is the python base station code 
-# for use with the Aerospace Robotics SLAM Rover project. 
-# Do whatever you want with this code as long as it doesn't kill people.
-# No liability et cetera.
-# http://www.aerospacerobotics.com/             June-August 2014
-#                     Michael Searing & Bill Warner
+# breezySLAM_XBee.py - base station code for Aerospace Robotics SLAMbot project
+# 
+# Copyright (C) 2014 Michael Searing
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import sys
 print("Python {}".format('.'.join([str(el) for el in sys.version_info[0:3]])))
+
+GPL = "breezySLAM_XBEE.py Copyright (C) 2014 Michael Searing \n\
+This program comes with ABSOLUTELY NO WARRANTY; for details type `show w'. \n\
+This is free software, and you are welcome to redistribute it \n\
+under certain conditions; type `show c' for details."
+print(GPL)
 
 from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.components import Laser
@@ -41,7 +57,7 @@ import matplotlib.pyplot as plt
 
 # note that Data.saveImage() imports PIL and subprocess for map image saving and viewing
 
-TALK_TO_XBEES = True if len(sys.argv) > 1 else False
+TALK_TO_XBEES = True if len(sys.argv) > 1 else False # non-blocking user input (yay)
 
 USE_ODOMETRY = True
 INTERNAL_MAP = False
@@ -77,6 +93,7 @@ MAP_DEPTH = 10 # depth of data points on map (levels of certainty)
 CMD_RATE = 100 # minimum time between auto-send commands [ms]
 DATA_RATE = 50 # minimum time between updating data from lidar [ms]
 MAP_RATE = 500 # minimum time between updating map [ms]
+MAX_RESENDS = 3 # max number of times to try to resend command before giving up
 
 # Robot constants
 REV_2_TICK = 1000.0/3 # encoder ticks per wheel revolution
@@ -97,7 +114,7 @@ LASER_OFFSET_MM = -35
 MAP_SIZE_PIXELS = MAP_SIZE_M*MAP_RES_PIX_PER_M # number of pixels across the map
 MAP_SCALE_MM_PER_PIXEL = int(1000/MAP_RES_PIX_PER_M)
 MAP_QUALITY = 50
-HOLE_WIDTH_MM = 10
+HOLE_WIDTH_MM = 600
 RANDOM_SEED = 0xabcd
 
 # Map constants (derived)
@@ -197,6 +214,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       else: # reset called during program
         self.resetting = True # stop currently running loops
         self.after(2000, lambda: self.restartAll(rootInit=rootInit, funcStep=1)) # release processor to let it wrap things up elsewhere
+      return
 
     elif funcStep == 1:
       if not rootInit: # reset called during program
@@ -219,12 +237,15 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
   def sendCommand(self, loop=True, resendCount=0): # loop indicates how function is called: auto (True) or manual (False)
     # first, figure out which string to send # note that ACK-checking only applies to value-setting commands in 'vwasd'
-    if self.serThread.cmdSent and not self.serThread.cmdRcvd and resendCount <= 2: # expecting ACK, but not received yet, and not resent 3 times
+
+    # expecting ACK, but not received yet, and not resent MAX_RESENDS times
+    if self.serThread.cmdSent and not self.serThread.cmdRcvd and resendCount <= MAX_RESENDS-1:
       resend = True
       strIn = self.serThread.sentCmd # get previous command
 
     else: # not resending last command
-      if (self.serThread.cmdSent and self.serThread.cmdRcvd) or resendCount >= 3: # ACK received, or command resent too many times (failed)
+      # ACK received, or command resent too many times (failed)
+      if (self.serThread.cmdSent and self.serThread.cmdRcvd) or resendCount >= MAX_RESENDS:
         self.serThread.cmdSent = False # reset state values
         self.serThread.cmdRcvd = False
         resendCount = 0
@@ -258,10 +279,12 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       if init: self.data.robot_mm0 = self.data.robot_mm # set initial position during initialization
 
       if INTERNAL_MAP:
-        dataMat = 255-np.resize(np.array(self.slam.breezyMap, dtype=np.uint8),(MAP_SIZE_PIXELS,MAP_SIZE_PIXELS))
-        self.data.matrix = (255.0/MAP_DEPTH*dataMat).astype(np.uint8)
-        self.data.matrix -= self.data.matrix > 0
-      else: self.data.drawPoints() # draw points, using updated slam, on the data matrix
+        dataMat = 255-np.flipud(np.resize(np.array(self.slam.breezyMap, dtype=np.uint8),(MAP_SIZE_PIXELS,MAP_SIZE_PIXELS)).T) # 7ms
+        self.data.matrix = (MAP_DEPTH/255.0*dataMat).astype(np.uint8) # 8ms
+        self.data.drawRobot() # new robot position
+      else:
+        self.data.drawPoints() # draw points, using updated slam, on the data matrix # 16ms
+        self.data.drawRobot() # new robot position
 
     if not self.resetting: self.after(DATA_RATE, self.updateData) # tkinter interrupt function
 
@@ -312,8 +335,7 @@ class Slam(RMHC_SLAM):
     # self.displayer = SlamShow(MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL, 'SLAM Rover: Hit ESC to quit')
 
   def updateSlam(self, dists, angs): # 15ms
-    distVec = [0.0 for i in range(SCAN_SIZE)]
-    velocities = None # odometry data, passed in from robot's encoders
+    distVec = [0 for i in range(SCAN_SIZE)]
 
     for i in range(NUM_SAMP): # create breezySLAM-compatible data from raw scan data
       index = float2int(angs[i])
@@ -364,45 +386,41 @@ class Data():
     self.angs = [0.0 for ind in range(NUM_SAMP)]
     self.robot_mm0 = () # robot location data
     self.robot_mm = () # x [mm], y [mm], th [deg], defined from lower-left corner of map
-    self.robot_pix = () # x, y [pix]
 
-    self.robotSprite = np.array([[0,0,0,0,1,0,0,0,0], # shape of robot on map
-                                 [0,0,0,0,1,0,0,0,0],
-                                 [0,0,0,0,1,0,0,0,0],
-                                 [0,0,0,1,1,1,0,0,0],
-                                 [0,0,0,1,1,1,0,0,0],
-                                 [0,0,1,1,0,1,1,0,0],
-                                 [0,0,1,1,0,1,1,0,0],
-                                 [0,1,1,0,0,0,1,1,0],
-                                 [0,1,1,0,0,0,1,1,0],
-                                 [1,1,0,0,0,0,0,1,1],
-                                 [1,1,1,1,1,1,1,1,1],
-                                 [1,1,1,1,1,1,1,1,1]])
+    self.robotSprite = np.array([[0,0,0,0,0,1,0,0,0,0,0], # shape of robot on map
+                                 [0,0,0,0,0,1,0,0,0,0,0],
+                                 [0,0,0,0,0,1,0,0,0,0,0],
+                                 [0,0,0,0,1,1,1,0,0,0,0],
+                                 [0,0,0,0,1,1,1,0,0,0,0],
+                                 [0,0,0,1,1,0,1,1,0,0,0],
+                                 [0,0,0,1,1,0,1,1,0,0,0],
+                                 [0,0,1,1,0,0,0,1,1,0,0],
+                                 [0,0,1,1,0,0,0,1,1,0,0],
+                                 [0,1,1,0,0,0,0,0,1,1,0],
+                                 [0,1,1,1,1,1,1,1,1,1,0],
+                                 [1,1,1,1,1,1,1,1,1,1,1]])
 
   def drawPoints(self): # 7ms
     xRobot_mm = (self.robot_mm[0] - self.robot_mm0[0]) # displacement from start position (center of map)
     yRobot_mm = (self.robot_mm[1] - self.robot_mm0[1])
-    Tdeg = self.robot_mm[2] - self.robot_mm0[2]
-
-    xRobot_pix = MAP_CENTER_PIX + xRobot_mm*MM_2_PIX # robot wrt map center (mO) + mO wrt matrix origin (xO)  = robot wrt xO [pix]
-    yRobot_pix = MAP_CENTER_PIX - yRobot_mm*MM_2_PIX # negative because np array rows increase downwards (+y_mm = -y_pix = -np rows)
-    self.robot_pix = (float2int(xRobot_pix), float2int(yRobot_pix))
-    self.drawRobot() # new robot position
+    th_deg = self.robot_mm[2] - self.robot_mm0[2]
 
     for i in range(NUM_SAMP):
-      x_pix = float2int( MAP_CENTER_PIX + ( xRobot_mm + self.dists[i]*np.sin((self.angs[i]+Tdeg)*DEG_2_RAD) )*MM_2_PIX ) # pixel location of scan point
-      y_pix = float2int( MAP_CENTER_PIX - ( yRobot_mm + self.dists[i]*np.cos((self.angs[i]+Tdeg)*DEG_2_RAD) )*MM_2_PIX ) # point wrt robot + robot wrt xO
+      x_pix = float2int( MAP_CENTER_PIX + ( xRobot_mm + self.dists[i]*np.sin((self.angs[i]+th_deg)*DEG_2_RAD) )*MM_2_PIX ) # pixel location of scan point
+      y_pix = float2int( MAP_CENTER_PIX - ( yRobot_mm + self.dists[i]*np.cos((self.angs[i]+th_deg)*DEG_2_RAD) )*MM_2_PIX ) # point wrt robot + robot wrt xO
       try:
         self.matrix[y_pix, x_pix] += self.matrix[y_pix, x_pix] < MAP_DEPTH # increment value at location if below maximum value
       except IndexError:
         print("scan out of bounds")
 
   def drawRobot(self):
-    xLoc = self.robot_pix[0]
-    yLoc = self.robot_pix[1]
-    th = self.robot_mm[2] - self.robot_mm0[2]
+    # robot wrt map center (mO) + mO wrt matrix origin (xO)  = robot wrt xO [pix]
+    # y is negative because np array rows increase downwards (+y_mm = -y_pix = -np rows)
+    xRobot_pix = float2int(MAP_CENTER_PIX + (self.robot_mm[0] - self.robot_mm0[0])*MM_2_PIX)
+    yRobot_pix = float2int(MAP_CENTER_PIX - (self.robot_mm[1] - self.robot_mm0[1])*MM_2_PIX)
+    th_deg = self.robot_mm[2] - self.robot_mm0[2]
 
-    robotMat = rotate(self.robotSprite, -th, output=int)
+    robotMat = rotate(self.robotSprite, -th_deg, output=int)
     rShape = robotMat.shape # rows, columns
 
     hgt = (rShape[0]-1)/2 # indices of center of robot
@@ -411,7 +429,7 @@ class Data():
       for y in range(-hgt, hgt+1):
         if robotMat[y+hgt, x+wid] == 1: # robot should exist here
           try:
-            self.matrix[yLoc+y, xLoc+x] = ROBOT_DEPTH
+            self.matrix[yRobot_pix+y, xRobot_pix+x] = ROBOT_DEPTH
           except IndexError:
             print("robot out of bounds")
 
@@ -420,7 +438,7 @@ class Data():
 
     imgData = MAP_DEPTH - self.matrix # invert colors to make 0 black and MAP_DEPTH white
     robot = imgData < 0 # save location of robot
-    imgData[:] = np.where(robot, 0, imgData) # make robot path black
+    imgData[:] = np.where(robot, 0, imgData) # make robot path 0
     GB = (255.0/MAP_DEPTH*imgData).astype(np.uint8) # scale map data and assign to red, green, and blue layers
     R = GB + (255*robot).astype(np.uint8) # add robot path to red layer
 
