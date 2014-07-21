@@ -17,13 +17,13 @@ Allows precise, high-frequency, low-overhead encoder monitoring ([link](http://w
 ### RPLidarDriver
 Provides simple methods for retrieving data from the RPLidar sensor ([link](http://rplidar.robopeak.com/subsites/rplidar/download.html)).
 ### Standard Python libraries
-These are all the standard Python libraries that we use in the Base Station code
+These are all the standard Python libraries that we use in the Base Station code.  We're not including anything that comes with Python.
 #### Version-independent libraries
-sys, time, threading, serial, struct, numpy, scipy, matplotlib
+pySerial, numpy, scipy, matplotlib
 #### Python2.x-specific libraries
-Tkinter, tkMessageBox, Queue
+Tkinter
 #### Python3.x-specific libraries
-tkinter (contains messagebox), queue
+tkinter
 
 ## breezySLAM_XBee.py
 Contains all base station code to run the slamBot.  BreezySLAM for Python must already be installed on your machine to use this code.  Written in Python 2.7.6, tested and functioning in Python 3.4.0.  Written and tested in Ubuntu 14.04, however should run on all Linux machines.  Have not tested in Windows or OS X.
@@ -37,7 +37,12 @@ If you receive the error "Inappropriate ioctl for device", traced back to within
 ### Python2
 Contains all the patch information for Python 2.x.
 #### pyserial.patch
-Created with `diff -u list_ports_posix_old.py list_ports_posix_new.py > listports.patch`.
+Created with `diff -u serialposix_old.py serialposix_new.py > pyserial.patch`.
+
+To use:
+
+    cd /usr/lib/python2.7/dist-packages/serial
+    sudo patch serialposix.py < /[path of patch file on your machine]/pyserial.patch
 #### serialposix_old.py
 This is our backup of the `serialposix.py` file.
 #### serialposix_new.py
@@ -45,7 +50,12 @@ This is what your `serialposix.py` file should look like after applying the patc
 ### Python3
 If you receive the error `TypeError: 'str' does not support the buffer interface`, traced back to within pySerial, apply this patch (more info: [link](http://stackoverflow.com/questions/5471158/typeerror-str-does-not-support-the-buffer-interface)).  The second patch in the patch file addresses this issue (the first is the baud rate hack).
 #### pyserial.patch
-Created with `diff -u list_ports_posix_old.py list_ports_posix_new.py > listports.patch`.
+Created with `diff -u serialposix_old.py serialposix_new.py > pyserial.patch`.
+
+To use:
+
+    cd /usr/lib/python3/dist-packages/serial
+    sudo patch serialposix.py < /[path of patch file on your machine]/pyserial.patch
 #### serialposix_old.py
 This is our backup of the `serialposix.py` file.
 #### serialposix_new.py
@@ -58,6 +68,11 @@ Fixes list_ports in Python 3.  Do not apply this patch to pySerial if you are ru
 If you receive the error `TypeError: can't use a string pattern on a bytes-like object`, traced back to within pySerial, apply this patch (more info: [link](http://stackoverflow.com/questions/5184483/python-typeerror-on-regex)).
 #### listports.patch
 Created with `diff -u list_ports_posix_old.py list_ports_posix_new.py > listports.patch`.
+
+To use:
+
+    cd /usr/lib/python3/dist-packages/serial
+    sudo patch tools/list_ports_posix.py < /[path of patch file on your machine]/listports.patch
 #### list_ports_posix_old.py
 This is our backup of the `list_ports_posix.py` file.
 #### list_ports_posix_new.py
@@ -76,9 +91,8 @@ Created with `diff -u boards_old.txt boards_new.txt > seeedmega_menuctl.patch`.
 
 To use:
 
-`cd /usr/share/arduino/hardware/arduino/`
-
-`sudo patch boards.txt < /[path of patch file on your machine]/seeedmega_menuctl.patch`.
+    cd /usr/share/arduino/hardware/arduino/
+    sudo patch boards.txt < /[path of patch file on your machine]/seeedmega_menuctl.patch
 #### boards_old.txt
 This is our backup of the `boards.txt` file.
 #### boards_new.txt
@@ -89,11 +103,9 @@ Created with `diff -u mega/pins_arduino.h seeed/pins_arduino.h > seeedmega_pinde
 
 To use:
 
-`cd /usr/share/arduino/hardware/arduino/variants/`
-
-`sudo cp -R mega seeed`
-
-`sudo patch seeed/pins_arduino.h < /[path of patch file on your machine]/seeedmega_pindef.patch`.
+    cd /usr/share/arduino/hardware/arduino/variants/
+    sudo cp -R mega seeed
+    sudo patch seeed/pins_arduino.h < /[path of patch file on your machine]/seeedmega_pindef.patch
 #### mega/pins_arduino.h
 This is our backup of the `mega/pins_arduino.h` file.
 #### seeed/pins_arduino.h
