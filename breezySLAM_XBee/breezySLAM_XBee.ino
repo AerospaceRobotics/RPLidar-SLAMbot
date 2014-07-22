@@ -39,8 +39,8 @@ const int RIGHT_ENCODER_1 = 18, RIGHT_ENCODER_2 = 19;
 
 // Other Constants (in C++, static const is redundant, ie same as const; extern const is opposite):
 // Packet constants (shared with base station)
-const unsigned char ENC_FLAG = '\xFE' // encoder data flag (&thorn)
-const unsigned char SCN_FLAG = '\xFF' // scan data flag (&yuml)
+const unsigned char ENC_FLAG = '\xFE'; // encoder data flag (&thorn)
+const unsigned char SCN_FLAG = '\xFF'; // scan data flag (&yuml)
 const unsigned short BUF_LEN = 20; // points per transmit packet
 const unsigned short PKT_SIZE = 4; // bytes per point
 const unsigned short BUF_SIZE = PKT_SIZE * BUF_LEN; // bytes per transmit packet
@@ -149,7 +149,7 @@ void loop() { // 16us
     if(IS_OK(lidar.waitPoint())) { // 90us, waits for new data point (500us call-to-call in theory...)
       pullScanData(dist, ang, startBit); // 36 us
       checkScanRate(ind, motorspeed, startBit); // 12 us // ensure we're getting TARG scans per revolution
-      writeScanData(dist, ang); // 72 us // send data to computer over serial0
+      writeScanData(dist, ang, startBit); // 72 us // send data to computer over serial0
     } else { fixLIDAR(); } // turn LIDAR on and make sure it's running fine
   } else { analogWrite(RPLIDAR_MOTOR, 0); } // turn motor off if not using LIDAR
 }
@@ -172,25 +172,25 @@ void pullScanData(unsigned short & dist, unsigned short & ang, bool & startBit) 
   ang = (unsigned short) float2int(AFAC*lidar.getCurrentPoint().angle); // Q9.3 // angle [0.125deg]
   startBit = lidar.getCurrentPoint().startBit; // new scan?
 }
-void writeScanData(const unsigned short & dist, const unsigned short & ang) { // little-endian
-  if(dist > DIST_MIN and dist < DIST_MAX and ang <= ANG_MAX) {
+void writeScanData(const unsigned short & dist, const unsigned short & ang, const bool & startBit) {
+  if(dist > DIST_MIN and dist < DIST_MAX and ang <= ANG_MAX) { // only send real data
     softBuffer[bufferIndex + 0] = dist & MASK1; // least significant dist bits
     softBuffer[bufferIndex + 1] = (dist & MASK2) >> 8 | (ang & MASK3) << 4; // most significant dist bits, least significant ang bits
     softBuffer[bufferIndex + 2] = (ang & MASK4) >> 4; // most significant ang bits
     softBuffer[bufferIndex + 3] = SCN_FLAG; // end of point
-    if(bufferIndex == BUF_SIZE - PKT_SIZE) { // we just filled the buffer
-      for(int i=0; i<BUF_SIZE; i++) {
-        xbeeSer.write(softBuffer[i]); // send all data to XBee for transmitting
-      }
-      bufferIndex = 0; // start writing to beginning of softBuffer
-      unsigned short currTime = millis();
-      xbeeSer.write(ENC_FLAG); xbeeSer.write(ENC_FLAG); // begin encoder info
-      xbeeSer.write(leftWheelAbs & MASK1); xbeeSer.write(leftWheelAbs >> 8);
-      xbeeSer.write(rightWheelAbs & MASK1); xbeeSer.write(rightWheelAbs >> 8);
-      xbeeSer.write(currTime & MASK1); xbeeSer.write(currTime >> 8);
-    } else {
-      bufferIndex += PKT_SIZE;
-    }
+    bufferIndex += PKT_SIZE;
+  }
+  if(startBit) { // new scan, so send queued data and encoder data (encoder data signals new scan)
+    for(int i=0; i<bufferIndex; i++) { xbeeSer.write(softBuffer[i]); } // send all data to XBee for transmitting
+    bufferIndex = 0;
+    unsigned short currTime = millis(); // get time for odometry info
+    xbeeSer.write(ENC_FLAG); xbeeSer.write(ENC_FLAG); // begin encoder info
+    xbeeSer.write(leftWheelAbs & MASK1); xbeeSer.write(leftWheelAbs >> 8); // left wheel
+    xbeeSer.write(rightWheelAbs & MASK1); xbeeSer.write(rightWheelAbs >> 8); // right wheel
+    xbeeSer.write(currTime & MASK1); xbeeSer.write(currTime >> 8); // time
+  } else if(bufferIndex == BUF_SIZE) { // we just filled the buffer
+    for(int i=0; i<bufferIndex; i++) { xbeeSer.write(softBuffer[i]); } // send all data to XBee for transmitting
+    bufferIndex = 0; // start writing to beginning of softBuffer
   }
 }
 void checkScanRate(unsigned short & ind, unsigned char & motorspeed, const bool & startBit) {
