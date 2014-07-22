@@ -58,8 +58,10 @@ import matplotlib.pyplot as plt
 
 TALK_TO_XBEES = True if len(sys.argv) > 1 else False # non-blocking user input (yay)
 
+# User preferences (default to True)
 USE_ODOMETRY = True
 INTERNAL_MAP = True
+LOG_ALL_DATA = True
 
 # Macros (here's me sort of wishing this were C++...)
 def float2int(x):
@@ -81,7 +83,7 @@ ANG_MAX = 360; # maximum scan angle
 
 # Protocol constants
 MASK = 0b0000111111111111 # bits 0 .. 11
-NUM_SAMP = 360 # number of serial packets needed for 1 scan (guesstimate)
+NUM_SAMP = 300 # number of serial packets needed for 1 scan (guesstimate)
 
 # Map constants
 VIEW_SIZE_M = 4 # default size of region to be shown in display [m]
@@ -169,9 +171,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.ax.set_xlabel("X Position [mm]")
     self.ax.set_ylabel("Y Position [mm]")
 
-    # if INTERNAL_MAP: cmap = plt.get_cmap("gray")
-    # else: cmap = plt.get_cmap("binary")
-    cmap = plt.get_cmap("binary")
+    cmap = plt.get_cmap("binary") # opposite of "gray"
     cmap.set_over("red") # robot is set to higher than MAP_DEPTH
     dummyInitMat = np.zeros((2,2), dtype=np.uint8) # need to plot something to setup tkinter before dependent objects
     self.myImg = self.ax.imshow(dummyInitMat, interpolation="none", cmap=cmap, vmin=0, vmax=MAP_DEPTH, # plot data
@@ -336,10 +336,10 @@ class Slam(RMHC_SLAM):
       dist = point[0]
       index = float2int(point[1]) # index
       if not 0 <= index <= 360: continue
-      distVec[index] = int(dist) if distVec[index] == 0 else int((dist+distVec[index])/2)
+      distVec[index] = int(dist)
 
     # note that breezySLAM switches the x- and y- axes (their x is forward, 0deg; y is right, +90deg)
-    # dataFile.write(' '.join((str(el) for el in list(self.currEncPos)+distVec)) + '\n')
+    if LOG_ALL_DATA: dataFile.write(' '.join((str(el) for el in list(self.currEncPos)+distVec)) + '\n')
     self.update(distVec, self.getVelocities() if USE_ODOMETRY else None) # update slam information using particle filtering on LIDAR scan data // 10ms
     x, y, theta = self.getpos()
 
@@ -383,7 +383,7 @@ class Data():
                                  [0,0,0,0,0,1,0,0,0,0,0],
                                  [0,0,0,0,1,1,1,0,0,0,0],
                                  [0,0,0,0,1,1,1,0,0,0,0],
-                                 [0,0,0,1,1,1,1,1,0,0,0],
+                                 [0,0,0,1,1,0,1,1,0,0,0],
                                  [0,0,0,1,1,0,1,1,0,0,0],
                                  [0,0,1,1,0,0,0,1,1,0,0],
                                  [0,0,1,1,0,0,0,1,1,0,0],
@@ -429,11 +429,11 @@ class Data():
   def saveImage(self):
     from PIL import Image # don't have PIL? sorry (try pypng)
 
-    imgData = MAP_DEPTH - self.matrix # invert colors to make 0 black and MAP_DEPTH white
-    robot = imgData < 0 # save location of robot
-    imgData[:] = np.where(robot, 0, imgData) # make robot path 0
-    GB = (255.0/MAP_DEPTH*imgData).astype(np.uint8) # scale map data and assign to red, green, and blue layers
-    R = GB + (255*robot).astype(np.uint8) # add robot path to red layer
+    imgData = self.matrix # get map
+    robot = imgData > MAP_DEPTH # save location of robot
+    imgData = MAP_DEPTH - imgData # invert colors to make 0 black and MAP_DEPTH white
+    GB = np.where(robot, 0, 255.0/MAP_DEPTH*imgData).astype(np.uint8) # scale map data and assign to red, green, and blue layers
+    R = np.where(robot, 255, GB).astype(np.uint8) # add robot path to red layer
 
     im = Image.fromarray(np.dstack((R,GB,GB))) # create image from depth stack of three layers
     filename = str(MAP_RES_PIX_PER_M)+"_pixels_per_meter.png" # filename is map resolution
@@ -593,7 +593,7 @@ class SerialThread(threading.Thread):
 
 
 if __name__ == '__main__':
-  # dataFile = open('data.log','w')
+  if LOG_ALL_DATA: dataFile = open('data.log','w')
   root = Root() # create Tkinter window, containing entire App
   root.mainloop() # start Tkinter loop
-  # dataFile.close()
+  if LOG_ALL_DATA: dataFile.close()
