@@ -52,45 +52,35 @@ neon_coord_4(
     vst1q_s32(result, c_4);
 }
 
-static float32x4_t half_4;
 
-static float32x4_t costheta_4;
-static float32x4_t sintheta_4;
-static float32x4_t nsintheta_4;
-
-static float32x4_t pos_x_4;
-static float32x4_t pos_y_4;
-
-/* Pre-loads loop invariants into 128-bit SSE registers */
-void 
-simd_init(
-    double costheta,
-    double sintheta,
-    int pos_x_pix,
-    int pos_y_pix)
+int
+distance_scan_to_map(
+		map_t *  map,
+		scan_t * scan,
+		position_t position)
 {    
-    half_4  = vdupq_n_f32(0.5);
+    /* Pre-compute sine and cosine of angle for rotation */
+    double position_theta_radians = radians(position.theta_degrees);
+    double costheta = cos(position_theta_radians) / map->scale_mm_per_pixel;
+    double sintheta = sin(position_theta_radians) / map->scale_mm_per_pixel;
 
-    costheta_4  = vdupq_n_f32(costheta);
-    sintheta_4  = vdupq_n_f32(sintheta);
-    nsintheta_4 = vdupq_n_f32(-sintheta);
-
-    pos_x_4 = vdupq_n_f32(pos_x_pix);
-    pos_y_4 = vdupq_n_f32(pos_y_pix);
-}
+    /* Pre-compute pixel offset for translation */
+    double pos_x_pix = position.x_mm / map->scale_mm_per_pixel;
+    double pos_y_pix = position.y_mm / map->scale_mm_per_pixel;
 
 
-void 
-compute_distance(
-    map_t * map, 
-    scan_t * scan,
-    double costheta, 
-    double sintheta, 
-    int pos_x_pix, 
-    int pos_y_pix, 
-    int * npoints, 
-    int64_t * sum)
-{
+    float32x4_t half_4  = vdupq_n_f32(0.5);
+
+    float32x4_t costheta_4  = vdupq_n_f32(costheta);
+    float32x4_t sintheta_4  = vdupq_n_f32(sintheta);
+    float32x4_t nsintheta_4 = vdupq_n_f32(-sintheta);
+
+    float32x4_t pos_x_4 = vdupq_n_f32(pos_x_pix);
+    float32x4_t pos_y_4 = vdupq_n_f32(pos_y_pix);
+
+    int npoints = 0; /* number of points where scan matches map */
+    int64_t sum = 0;
+    
     /* Stride by 4 over obstacle points in scan */
     int i = 0;
     for (i=0; i<scan->obst_npoints; i+=4) 
@@ -113,9 +103,15 @@ compute_distance(
         {
             int x = xarr[j];
             int y = yarr[j];
-            
-            /* Add point if in map bounds */
-            add_if_in_bounds(map, x, y, npoints, sum);
-        }
+
+	    /* Add point if in map bounds */
+	    if (x >= 0 && x < map->size_pixels && y >= 0 && y < map->size_pixels) 
+	    {
+		    sum += map->pixels[y * map->size_pixels + x];
+		    npoints++;
+	    }
+	}
     }
+
+    return npoints ? (int)(sum * 1024 / npoints) : -1;  
 }

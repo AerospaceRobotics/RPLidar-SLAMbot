@@ -44,12 +44,6 @@ Change log:
 #include "../c/random.h"
 #include "pyextension_utils.h"
 
-// Python2 support
-#if PY_MAJOR_VERSION < 3
-#define PyInt_FromLong PyLong_FromLong
-#define PyUnicode_AsUTF8 PyString_AsString
-#endif
-
 
 // Position class  -------------------------------------------------------------
 
@@ -596,8 +590,6 @@ static int bad_mapbytes(PyObject * py_mapbytes, int size_pixels, const char * me
     return 0;
 }
 
-
-
 static void
 Map_dealloc(Map* self)
 {            
@@ -640,7 +632,6 @@ Map_init(Map *self, PyObject *args, PyObject *kwds)
     return 0;
 }
 
-
 static PyObject *
 Map_str(Map * self)
 {            
@@ -652,7 +643,6 @@ Map_str(Map * self)
     
     return  PyUnicode_FromString(str);
 }
-
 
 static PyObject *
 Map_get(Map * self, PyObject * args, PyObject * kwds)

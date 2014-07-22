@@ -24,6 +24,7 @@ Change log
 01-MAR-2014 : SDL - Converted millimeters to meters for API
 21-JUN-2014 : SDL - Added support for SSE and NEON
 10-JUL-2014 : SDL - Changed Laser scan rate and angles from int to double
+21-JUL-2014 : SDL - Made RMHC position search avoid looping when max count is zero
 */
 
 
@@ -87,11 +88,6 @@ out_of_bounds(int value, int bound)
 }
 
 
-static double 
-radians(double degrees)
-{
-    return degrees * M_PI / 180;
-}
 
 static int 
 clip(int *xyc, int * yxc, int xy, int yx, int map_size)
@@ -220,15 +216,6 @@ map_laser_ray(
             error += horiz;
         }
     }    
-}
-
-static double 
-random_normal(
-    void * randomizer, 
-    double mu, double 
-    sigma)
-{
-	return mu + sigma * random_rnor(randomizer);
 }
 
 
@@ -485,8 +472,6 @@ laser_string(
         );
 }    
 
-
-
 position_t 
 rmhc_position_search(
     position_t start_pos,
@@ -506,10 +491,11 @@ rmhc_position_search(
 	
 	int lowest_distance =  current_distance;   
 	int last_lowest_distance = current_distance;   
-	
+		
 	int counter = 0;
-	do 
-	{    
+	
+	while (counter < max_search_iter) 
+	{  	    
 		currentpos = lastbestpos;
 		
 		currentpos.x_mm = random_normal(randomizer, currentpos.x_mm, sigma_xy_mm);
@@ -517,7 +503,7 @@ rmhc_position_search(
 		currentpos.theta_degrees = random_normal(randomizer, currentpos.theta_degrees, sigma_theta_degrees);
 		
 		current_distance = distance_scan_to_map(map, scan, currentpos);
-				
+		
 		/* -1 indicates infinity */		
 		if ((current_distance > -1) && (current_distance < lowest_distance))
 		{
@@ -541,51 +527,8 @@ rmhc_position_search(
 			}
 		}
 		
-	} while (counter < max_search_iter);
+	}
     
 	return bestpos;
-}
-
-
-
-int 
-distance_scan_to_map(
-    map_t *  map,
-    scan_t * scan,
-    position_t position)
-{    
-    int npoints = 0; /* number of points where scan matches map */
-    int64_t sum = 0; /* sum of map values at those points */
-    
-    /* Pre-compute sine and cosine of angle for rotation */
-    double position_theta_radians = radians(position.theta_degrees);
-    double costheta = cos(position_theta_radians) / map->scale_mm_per_pixel;
-    double sintheta = sin(position_theta_radians) / map->scale_mm_per_pixel;
-    
-    /* Pre-compute pixel offset for translation */
-    double pos_x_pix = position.x_mm / map->scale_mm_per_pixel;
-    double pos_y_pix = position.y_mm / map->scale_mm_per_pixel;
-
-    /* Compute number of matching points and their sum */
-    compute_distance(map, scan, costheta, sintheta, pos_x_pix, pos_y_pix, &npoints, &sum);
-        
-    /* Return sum scaled by number of points, or -1 if none */
-    return npoints ? (int)(sum * 1024 / npoints) : -1;  
-}
-
-void
-add_if_in_bounds(
-    map_t * map, 
-    int x, 
-    int y, 
-    int * npoints, 
-    int64_t * sum)
-{
-    /* Check boundaries */
-    if (!out_of_bounds(x, map->size_pixels) && !out_of_bounds(y,  map->size_pixels)) 
-    {
-        sum += map->pixels[y * map->size_pixels + x];
-        npoints++;
-    }
 }
 

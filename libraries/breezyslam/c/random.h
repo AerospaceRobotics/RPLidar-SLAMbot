@@ -1,7 +1,10 @@
 /*
 
-random.h - Function prototypes fora random-number generator supporting normal and
-exponential distributions
+random.h - Function prototypes fora random-number generator supporting normal 
+distributions
+
+Copyright (C) 2014 Simon D. Levy
+
 
 This code is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as 
@@ -30,11 +33,8 @@ void * random_copy(void * r);
 /* Deallocates memory for a random-number generator */
 void random_free(void * v);
 
-/* Returns a  an exponential variate with density exp(-x),x>0 */
-float random_rexp(void * v);
-
-/* Returns a  standard normal variate with mean zero, variance 1 */
-float random_rnor(void * v);
+/* Returns a  standard normal variate with mean mu, variance sigma */
+double random_normal(void * v, double mu, double sigma);
 
 #ifdef __cplusplus 
 }

@@ -41,7 +41,7 @@ Change log:
 
 # Map size, scale
 MAP_SIZE_PIXELS          = 800
-MAP_SCALE_MM_PER_PIXEL   =  35
+MAP_SCALE_MM_PER_PIXEL   =  40
 
 from breezyslam.algorithms import Deterministic_SLAM, RMHC_SLAM
 from breezyslam.components import Laser
@@ -72,7 +72,7 @@ def main():
     
     # Build a robot model if we want odometry
     robot = Rover() if use_odometry else None
-    
+        
     # Create a CoreSLAM object with laser params and optional robot object
     slam = RMHC_SLAM(URG04(), MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL, random_seed=seed) \
            if seed \

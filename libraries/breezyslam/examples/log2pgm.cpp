@@ -38,7 +38,7 @@ Change log:
 
 // SinglePositionSLAM params: gives us a nice-size map
 static const int MAP_SIZE_PIXELS        = 800;
-static const int MAP_SCALE_MM_PER_PIXEL =  35;
+static const int MAP_SCALE_MM_PER_PIXEL =  40;
 
 static const int SCAN_SIZE 		        = 682;
 

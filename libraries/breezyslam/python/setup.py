@@ -18,6 +18,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License 
 along with this code.  If not, see <http://www.gnu.org/licenses/>.
 '''
+
 # Support streaming SIMD extensions
 
 from platform import machine
@@ -37,15 +38,18 @@ elif arch == 'armv7l':
 else:
     arch = 'sisd'
 
+SOURCES = [
+    'pybreezyslam.c', 
+    'pyextension_utils.c', 
+    '../c/coreslam.c', 
+    '../c/coreslam_' + arch + '.c',
+    '../c/random.c',
+    '../c/ziggurat.c']
+
 from distutils.core import setup, Extension
 
 module = Extension('pybreezyslam', 
-    sources = [ 
-        'pybreezyslam.c', 
-        'pyextension_utils.c', 
-        '../c/coreslam.c',
-        '../c/coreslam_' + arch + '.c',
-        '../c/ziggrand.c'], 
+    sources = SOURCES, 
     extra_compile_args = SIMD_FLAGS + OPT_FLAGS
     )
 

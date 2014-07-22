@@ -244,19 +244,19 @@ class RMHC_SLAM(SinglePositionSLAM):
         '''
         Implements the _getNewPosition() method of SinglePositionSLAM. Uses Random-Mutation Hill-Climbing
         search to look for a better position based on a starting position.
-        '''
-
+        '''     
+        
         # RMHC search is implemented as a C extension for efficiency
-        return pybreezyslam.rmhcPositionSearch(\
-            start_position, \
-            self.map, \
-            self.scan_for_distance, \
+        return pybreezyslam.rmhcPositionSearch(
+            start_position, 
+            self.map, 
+            self.scan_for_distance, 
             self.laser,
             self.sigma_xy_mm,
             self.sigma_theta_degrees,
             self.max_search_iter,
             self.randomizer)
-             
+                             
     def _random_normal(self, mu, sigma):
         
         return mu + self.randomizer.rnor() * sigma

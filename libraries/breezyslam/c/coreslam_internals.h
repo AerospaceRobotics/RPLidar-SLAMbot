@@ -27,32 +27,9 @@ typedef __int64 int64_t;       /* Define it from MSVC's internal type */
 static const int NO_OBSTACLE            = 65500;
 static const int OBSTACLE               = 0;
 
+static double 
+radians(double degrees)
+{
+    return degrees * M_PI / 180;
+}
 
-/* Implemented hardware-specifically */
-void 
-compute_distance(
-    map_t * map, 
-    scan_t * scan,
-    double costheta, 
-    double sintheta, 
-    int pos_x_pix, 
-    int pos_y_pix, 
-    int * npoints, 
-    int64_t * sum);
-
-/* Helper for above */
-void
-add_if_in_bounds(
-    map_t * map, 
-    int x, 
-    int y, 
-    int * npoints, 
-    int64_t * sum);
-    
-/* SIMD support */
-void 
-simd_init(
-    double costheta,
-    double sintheta,
-    int pos_x_pix,
-    int pos_y_pix);

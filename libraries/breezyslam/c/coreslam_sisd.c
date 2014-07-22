@@ -28,28 +28,24 @@ along with this code.  If not, see <http:#www.gnu.org/licenses/>.
 #include "coreslam.h"
 #include "coreslam_internals.h"
 
-void 
-simd_init(
-    double costheta,
-    double sintheta,
-    int pos_x_pix,
-    int pos_y_pix)
-{
-  /* Do nothing for SISD */
-}
-
-void 
-compute_distance(
-    map_t * map, 
+int 
+distance_scan_to_map(
+    map_t *  map,
     scan_t * scan,
-    double costheta, 
-    double sintheta, 
-    int pos_x_pix, 
-    int pos_y_pix, 
-    int * npoints, 
-    int64_t * sum)
-{
-    /* Loop over points in scan */
+    position_t position)
+{    
+    /* Pre-compute sine and cosine of angle for rotation */
+    double position_theta_radians = radians(position.theta_degrees);
+    double costheta = cos(position_theta_radians) / map->scale_mm_per_pixel;
+    double sintheta = sin(position_theta_radians) / map->scale_mm_per_pixel;
+    
+    /* Pre-compute pixel offset for translation */
+    double pos_x_pix = position.x_mm / map->scale_mm_per_pixel;
+    double pos_y_pix = position.y_mm / map->scale_mm_per_pixel;
+
+    int64_t sum = 0; /* sum of map values at those points */
+    int npoints = 0; /* number of points where scan matches map */
+    
     int i = 0;
     for (i=0; i<scan->npoints; i++) 
     {        
@@ -61,7 +57,15 @@ compute_distance(
             int y = floor(pos_y_pix + sintheta * scan->x_mm[i] + costheta * scan->y_mm[i] + 0.5);
          
             /* Add point if in map bounds */
-            add_if_in_bounds(map, x, y, npoints, sum);
+            if (x >= 0 && x < map->size_pixels && y >= 0 && y < map->size_pixels) 
+            {
+                sum += map->pixels[y * map->size_pixels + x];
+                npoints++;
+            } 
         }
     } 
+
+    /* Return sum scaled by number of points, or -1 if none */
+    return npoints ? (int)(sum * 1024 / npoints) : -1;  
 }
+

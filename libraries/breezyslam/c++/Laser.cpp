@@ -1,6 +1,6 @@
 /**
 * 
-* \mainpage BreezySLAM: Simple, efficient SLAM in C++
+* BreezySLAM: Simple, efficient SLAM in C++
 *
 * Laser.cpp - C++ code for Laser model class
 *

@@ -24,7 +24,7 @@ VIEWER = eog
 # Set these for different experiments
 DATASET = exp2
 USE_ODOMETRY = 1
-RANDOM_SEED = 9999
+RANDOM_SEED  = 9999
 
 all: log2pgm
 
@@ -48,8 +48,8 @@ bench: $(DATASET).pgm
 $(DATASET).pgm:
 	./log2pgm.py $(DATASET) $(USE_ODOMETRY) $(RANDOM_SEED)
 
+backup:
+	cp -r .. ~/Documents/bak-breezyslam
+
 clean:
 	rm -f log2pgm *.pyc *.pgm *.o *~
-
-backup:
-	cp -r  ../* ~/Documents/breezyslam/bak

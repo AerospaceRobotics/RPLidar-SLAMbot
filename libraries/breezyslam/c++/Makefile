@@ -34,7 +34,7 @@ else
   LIBEXT = dll
 endif
 
-ARCH = $(shell arch)
+ARCH = $(shell uname -m)
 
 # Set SIMD compile params based on architecture
 ifeq ("$(ARCH)","armv7l")
@@ -50,18 +50,15 @@ all: libbreezyslam.$(LIBEXT)
 test: breezytest
 	./breezytest
 
-libbreezyslam.$(LIBEXT): algorithms.o Random.o Scan.o Map.o Laser.o WheeledRobot.o \
-                         coreslam.o coreslam_$(ARCH).o ziggrand.o
-	g++ -O3 -shared algorithms.o Random.o Scan.o Map.o Laser.o WheeledRobot.o \
-                        coreslam.o coreslam_$(ARCH).o ziggrand.o \
+libbreezyslam.$(LIBEXT): algorithms.o  Scan.o Map.o Laser.o WheeledRobot.o \
+                         coreslam.o coreslam_$(ARCH).o random.o ziggurat.o
+	g++ -O3 -shared algorithms.o Scan.o Map.o Laser.o WheeledRobot.o \
+                        coreslam.o coreslam_$(ARCH).o random.o ziggurat.o \
           -o libbreezyslam.$(LIBEXT) -lm
 
 algorithms.o: algorithms.cpp algorithms.hpp Laser.hpp Position.hpp Map.hpp Scan.hpp Velocities.hpp \
-               WheeledRobot.hpp Random.hpp ../c/coreslam.h 
+               WheeledRobot.hpp ../c/coreslam.h 
 	g++ -O3 -I../c -c -Wall $(CFLAGS) algorithms.cpp
-
-Random.o: Random.cpp Random.hpp 
-	g++ -O3 -I../c -c -Wall $(CFLAGS) Random.cpp
 
 Scan.o: Scan.cpp Scan.hpp Velocities.hpp Laser.hpp ../c/coreslam.h
 	g++ -O3 -I../c -c -Wall $(CFLAGS) Scan.cpp
@@ -81,8 +78,11 @@ coreslam.o: ../c/coreslam.c ../c/coreslam.h
 coreslam_$(ARCH).o: ../c/coreslam_$(ARCH).c ../c/coreslam.h
 	gcc -O3 -c -Wall $(CFLAGS) $(SIMD_FLAGS) ../c/coreslam_$(ARCH).c
 
-ziggrand.o: ../c/ziggrand.c
-	gcc -O3 -c -Wall $(CFLAGS) ../c/ziggrand.c
+random.o: ../c/random.c
+	gcc -O3 -c -Wall $(CFLAGS) ../c/random.c
+	
+ziggurat.o: ../c/ziggurat.c
+	gcc -O3 -c -Wall $(CFLAGS) ../c/ziggurat.c
 	
 install: libbreezyslam.$(LIBEXT)
 	cp libbreezyslam.$(LIBEXT) $(LIBDIR)
