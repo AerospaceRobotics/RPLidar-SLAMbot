@@ -26,3 +26,15 @@ Jul 7th 2014 to Jul 10th 2014 changes:
 Laser scan_rate_hz accepts floats again
 
 update() does not appear to use LIDAR data anymore.  Odometry still works great however...
+
+when HOLE_WIDTH_MM is set to a low value ( < ~50 ), gcc raises a floating point exception and python crashes
+
+------------------------------------------------------------------------------
+
+Jul 10th 2014 to Jul 21st 2014 changes:
+
+update() works!
+
+Turns out odometry worked in the last version only due to a bug
+
+Several bug fixes (no front-end changes)
