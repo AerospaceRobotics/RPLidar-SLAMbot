@@ -83,7 +83,7 @@ ANG_MAX = 360; # maximum scan angle
 
 # Protocol constants
 MASK = 0b0000111111111111 # bits 0 .. 11
-NUM_SAMP = 300 # number of serial packets needed for 1 scan (guesstimate)
+NUM_SAMP = 360 # number of serial packets needed for 1 scan (guesstimate)
 
 # Map constants
 VIEW_SIZE_M = 4 # default size of region to be shown in display [m]
@@ -97,6 +97,7 @@ DATA_RATE = 50 # minimum time between updating data from lidar [ms]
 MAP_RATE = 500 # minimum time between updating map [ms]
 MAX_RX_TRIES = 8 # max number of times to try to tell LIDAR to start before giving up
 MAX_TX_TRIES = 3 # max number of times to try to resend command before giving up
+SER_READ_TIMEOUT = 1 # time to wait for data from Arduino before connection considered lost [s]
 
 # Robot constants
 REV_2_TICK = 1000.0/3 # encoder ticks per wheel revolution
@@ -105,7 +106,7 @@ WHEEL_BASE = 177.0 # length of treads [mm]
 WHEEL_TRACK = 190.0 # separation of treads [mm]
 
 # Laser constants
-SCAN_SIZE = 361 # number of points per scan
+SCAN_SIZE = 360 # number of points per scan
 SCAN_RATE_HZ = 1980.0/360 # 1980points/sec * scan/360points [scans/sec]
 SCAN_ANGLE_MIN_DEG = ANG_MIN
 SCAN_ANGLE_MAX_DEG = ANG_MAX
@@ -117,7 +118,7 @@ LASER_OFFSET_MM = -35
 MAP_SIZE_PIXELS = MAP_SIZE_M*MAP_RES_PIX_PER_M # number of pixels across the map
 MAP_SCALE_MM_PER_PIXEL = int(1000/MAP_RES_PIX_PER_M)
 MAP_QUALITY = 50
-HOLE_WIDTH_MM = 100
+HOLE_WIDTH_MM = 600
 RANDOM_SEED = 0xabcd
 
 # Map constants (derived)
@@ -132,7 +133,7 @@ ROBOT_DEPTH = MAP_DEPTH + 1 # value of robot in map storage
 REV_2_MM = np.pi*WHEEL_DIAMETER # circumference [mm]
 MM_2_TICK = REV_2_TICK/REV_2_MM # [ticks/mm]
 TICK_2_MM = REV_2_MM/REV_2_TICK # [mm/tick]
-TREAD_ERROR = 0.89 # continuous tread slips this much relative to slip of wheels (experimental)
+TREAD_ERROR = 0.90 # continuous tread slips this much relative to slip of wheels (experimental)
 ANGULAR_FLUX = TREAD_ERROR*((WHEEL_BASE/WHEEL_TRACK)**2+1); # tread slippage [] # our math assumed wheels, hence TREAD_ERROR
 ROT_2_MM = np.pi*WHEEL_TRACK # circumference of wheel turning circle [mm]
 ROT_2_DEG = 360.0 # [deg]
@@ -156,16 +157,21 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.wm_title("Aerospace Robotics LIDAR Viewer") # name window
     self.lower() # bring terminal to front
 
+    # Initialize objects
+    self.statusQueue = queue.Queue() # status of serial thread # FIFO queue by default
     self.RXQueue = queue.Queue() # data from serial to root # FIFO queue by default
     self.TXQueue = queue.Queue() # data from root to serial # FIFO queue by default
-    self.serThread = SerialThread(self.RXQueue, self.TXQueue) # initialize thread object, getting user input if required
-    self.initUI() # create all the pretty stuff in the Tkinter window
     self.resetting = False
+
+    # Start loops
+    self.serThread = SerialThread(self.statusQueue, self.RXQueue, self.TXQueue) # initialize thread object, getting user input if required
+    self.serThread.start()
+    self.initUI() # create all the pretty stuff in the Tkinter window
     self.restartAll(rootInit=True) # contains all initialization that needs to be re-done in case of a soft reset
     self.lift() # bring tk window to front if initialization finishes
 
   def initUI(self):
-    self.fig = plt.figure(figsize=(8, 5), dpi=131) # create matplotlib figure
+    self.fig = plt.figure(figsize=(8, 5), dpi=131) # create matplotlib figure (calculated from $ xrandr)
     self.ax = self.fig.add_subplot(111) # add plot to figure
     self.ax.set_title("RPLIDAR Plotting") # name and label plot
     self.ax.set_xlabel("X Position [mm]")
@@ -201,8 +207,8 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.entryBox = tk.Entry(master=self)
     self.entryBox.pack(side="left", padx = 5)
     tk.Button(self, text="Send (enter)", command=lambda: self.sendCommand(loop=False)).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
-    self.numLost = tk.StringVar() # status of serThread
-    tk.Label(self, textvariable=self.numLost).pack(side="left", padx=5, pady=5)
+    self.statusStr = tk.StringVar() # status of serThread
+    tk.Label(self, textvariable=self.statusStr).pack(side="left", padx=5, pady=5)
     tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
 
   def restartAll(self, rootInit=False, funcStep=0): # two-part soft reset function
@@ -237,7 +243,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     # first, figure out which string to send # note that ACK-checking only applies to value-setting commands in 'vwasd'
 
     # expecting ACK, but not received yet, and not resent MAX_TX_TRIES times
-    if self.serThread.cmdSent and not self.serThread.cmdRcvd and resendCount <= MAX_TX_TRIES-1:
+    if self.serThread.cmdSent and not self.serThread.cmdRcvd and resendCount < MAX_TX_TRIES:
       resend = True
       strIn = self.serThread.sentCmd # get previous command
 
@@ -269,8 +275,15 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     if loop and not self.resetting: self.after(CMD_RATE, lambda: self.sendCommand(resendCount=resendCount)) # tkinter interrupt function
 
   def updateData(self, init=False):
-    if self.RXQueue.qsize() > NUM_SAMP or init: # ready to pull new scan data
-      self.getScanData() # pull LIDAR data via serial from robot, write to data object
+    try:
+      status = self.statusQueue.get_nowait()
+    except queue.Empty:
+      pass
+    else:
+      self.statusStr.set(status)
+
+    if self.RXQueue.qsize() > NUM_SAMP: # ready to pull new scan data
+      self.getScanData() # pull data from serial thread via RXQueue
       if init: self.slam.prevEncPos = self.slam.currEncPos # set both values the first time through
 
       self.data.robot_mm = self.slam.updateSlam(self.data.points) # send data to slam to do stuff
@@ -283,7 +296,9 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
         self.data.drawPoints() # draw points, using updated slam, on the data matrix # 16ms
       self.data.drawRobot() # new robot position
 
-    if not self.resetting: self.after(DATA_RATE, self.updateData) # tkinter interrupt function
+      if init: init = False # initial data gathered successfully
+
+    if not self.resetting: self.after(DATA_RATE, lambda: self.updateData(init=init)) # tkinter interrupt function
 
   def updateMap(self):
     self.myImg.set_data(self.data.matrix) # 15ms
@@ -293,16 +308,19 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
   def getScanData(self): # 50ms
     while True:
-      queueItem = self.RXQueue.get()
-      if isinstance(queueItem[0], float): # scan data
-        self.data.points.append(queueItem)
-      elif isinstance(queueItem[1], int): # encoder data
-        self.slam.currEncPos = queueItem
-        break # encoder data signals new scan
-      elif isinstance(queueItem, str): # serial thread status
-        self.numLost.set(queueItem)
+      try:
+        queueItem = self.RXQueue.get_nowait()
+      except queue.Empty: # something's wrong
+        self.statusStr.set("Connection lost at RXQueue. Send 'l' to restart LIDAR.")
+        return # stop because no data to read
       else:
-        print("RXQueue broken")
+        if isinstance(queueItem[0], float): # scan data
+          self.data.points.append(queueItem)
+        elif isinstance(queueItem[1], int): # encoder data
+          self.slam.currEncPos = queueItem
+          break # encoder data signals new scan
+        else:
+          print("RXQueue broken")
 
 
 class Slam(RMHC_SLAM):
@@ -334,8 +352,8 @@ class Slam(RMHC_SLAM):
 
     for point in points: # create breezySLAM-compatible data from raw scan data
       dist = point[0]
-      index = float2int(point[1]) # index
-      if not 0 <= index <= 360: continue
+      index = int(point[1]) # index
+      if not 0 <= index <= SCAN_SIZE-1: continue
       distVec[index] = int(dist)
 
     # note that breezySLAM switches the x- and y- axes (their x is forward, 0deg; y is right, +90deg)
@@ -445,8 +463,9 @@ class Data():
 
 
 class SerialThread(threading.Thread):
-  def __init__(self, RXQueue, TXQueue):
+  def __init__(self, statusQueue, RXQueue, TXQueue):
     super(SerialThread, self).__init__() # nicer way to initialize base class (only works with new-style classes)
+    self.statusQueue = statusQueue
     self.RXQueue = RXQueue
     self.TXQueue = TXQueue
     self._stop = threading.Event() # create flag
@@ -457,7 +476,7 @@ class SerialThread(threading.Thread):
     if TALK_TO_XBEES: self.talkToXBee() # optional (see function)
     self.waitForResponse() # start LIDAR and make sure Arduino is sending stuff back to us
 
-    self.start() # put serial data into queue
+    self.ser.timeout = SER_READ_TIMEOUT
 
   def connectToPort(self):
     # first select a port to use
@@ -469,7 +488,8 @@ class SerialThread(threading.Thread):
     else: # query user for which port to use
       print("Available COM ports:")
       print(portList)
-      portName = portList[0][0:-1] + raw_input("Please select a port number [%s]: " % ', '.join([str(el[-1]) for el in portList]))
+      portRequested = raw_input("Please select a port number [%s]: " % ', '.join([str(el[-1]) for el in portList]))
+      portName = (portList[0][0:-1] + portRequested) if portRequested is not "" else portList[0]
 
     # then try to connect to it
     try:
@@ -525,21 +545,17 @@ class SerialThread(threading.Thread):
       self.ser.write(command) # send the command
       try:
         num = float(outByte[1:])
-
       except IndexError:
         if command == 'v': print("Invalid command. Enter speed for speed set command.")
         else: print("Invalid command. Enter distance/angle for movement commands.")
-
       except ValueError:
         print("Invalid command. Enter a number after command.")
-
       else:
         self.cmdSent = True
         self.sentCmd = outByte
         if command == 'v': self.ser.write(str(num)) # send motor speed as given
         elif command in 'ws': self.ser.write(str(int(MM_2_TICK*num))) # convert millimeters to ticks
         elif command in 'ad': self.ser.write(str(int(DEG_2_TICK*num))) # convert degrees to ticks
-
     else:
       self.ser.write(command) # otherwise send only first character
 
@@ -547,24 +563,30 @@ class SerialThread(threading.Thread):
     tstart = time.time()
     lagged, missed, total, scans = 0,0,0,0
     while not self._stop.isSet(): # pulls and processes all incoming and outgoing serial data
-      if time.time() > tstart + 1.0: # report status of serial thread to root every second
-        tstart += 1.0
-        self.RXQueue.put("Last sec: {} lagged, {} errors out of {} points, {} scans.".format(lagged,missed,total,scans))
-        lagged, missed, total, scans = 0,0,0,0
-
       # relay commands from root to Arduino
       try:
         self.writeCmd(self.TXQueue.get_nowait())
       except queue.Empty:
         pass
 
-      if self.ser.inWaiting() > 300*PKT_SIZE: # data in buffer is too old to be useful (300 packets old)
+      # check if data in buffer is too old to be useful (300 packets)
+      if self.ser.inWaiting() > 300*PKT_SIZE:
         lagged += self.ser.inWaiting()/PKT_SIZE
         self.ser.flushInput()
 
+      # pull serial data from computer buffer (XBee)
       # in order sent (bytes comma-separated):                  dist[0:7], dist[8:12] ang[0:3], ang[4:12]
       # in order received (future data chunks comma-separated): dist[0:12]            ang[0:3], ang[4:12]
       pointLine = self.ser.read(PKT_SIZE) # distance and angle (blocking)
+      if len(pointLine) < PKT_SIZE: # timeout occurs
+        self.statusQueue.put("Connection lost at ser.read(). Send 'l' to restart LIDAR.")
+        continue # try again
+
+      if time.time() > tstart + 1.0: # report status of serial thread to root every second
+        tstart += 1.0
+        self.statusQueue.put("Last sec: {} lagged, {} errors out of {} points, {} scans.".format(lagged,missed,total,scans))
+        lagged, missed, total, scans = 0,0,0,0
+
 
       # check for command ACK
       if pointLine == ENC_FLAG*PKT_SIZE:
@@ -574,13 +596,13 @@ class SerialThread(threading.Thread):
       # check for encoder data packet
       if pointLine[0:2] == ENC_FLAG*2:
         pointLine += self.ser.read(ENC_SIZE-PKT_SIZE) # read more bytes to complete longer packet
-        self.RXQueue.put(struct.unpack('<hhH',pointLine[2:ENC_SIZE+1])) # little-endian 2 signed shorts, 1 unsigned short
+        self.RXQueue.put(struct.unpack('<hhH',pointLine[2:])) # little-endian 2 signed shorts, 1 unsigned short
         scans += 1
         continue # move to the next point
 
       # check for lidar data packet
-      if pointLine[PKT_SIZE-1] == SCN_FLAG:
-        bytes12, byte3 = struct.unpack('<HB',pointLine[0:PKT_SIZE-1]) # little-endian 2 bytes and 1 byte
+      if pointLine[-1] == SCN_FLAG:
+        bytes12, byte3 = struct.unpack('<HB',pointLine[0:-1]) # little-endian 2 bytes and 1 byte
         distCurr = (bytes12 & MASK)/DFAC # 12 least-significant (sent first) bytes12 bits
         angleCurr = ((bytes12 & ~MASK) >> 12 | byte3 << 4)/AFAC # 4 most-significant (sent last) bytes2 bits, 8 byte1 bits
         if DIST_MIN < distCurr < DIST_MAX and angleCurr <= ANG_MAX: # data matches what was transmitted
