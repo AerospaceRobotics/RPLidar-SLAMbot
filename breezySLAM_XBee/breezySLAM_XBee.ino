@@ -169,11 +169,11 @@ bool beatHeart(bool & heartState) {
 // LIDAR Functions
 void pullScanData(unsigned short & dist, unsigned short & ang, bool & startBit) {
   dist = (unsigned short) (DFAC*lidar.getCurrentPoint().distance); // Q13.-1 // distance [2mm]
-  ang = (unsigned short) float2int(AFAC*lidar.getCurrentPoint().angle); // Q9.3 // angle [0.125deg]
+  ang = (unsigned short) (AFAC*lidar.getCurrentPoint().angle); // Q9.3 // angle [0.125deg]
   startBit = lidar.getCurrentPoint().startBit; // new scan?
 }
 void writeScanData(const unsigned short & dist, const unsigned short & ang, const bool & startBit) {
-  if(dist > DIST_MIN and dist < DIST_MAX and ang <= ANG_MAX) { // only send real data
+  if(dist > DIST_MIN and dist < DIST_MAX and ang < ANG_MAX) { // only send real data
     softBuffer[bufferIndex + 0] = dist & MASK1; // least significant dist bits
     softBuffer[bufferIndex + 1] = (dist & MASK2) >> 8 | (ang & MASK3) << 4; // most significant dist bits, least significant ang bits
     softBuffer[bufferIndex + 2] = (ang & MASK4) >> 4; // most significant ang bits
