@@ -38,3 +38,12 @@ update() works!
 Turns out odometry worked in the last version only due to a bug
 
 Several bug fixes (no front-end changes)
+
+------------------------------------------------------------------------------
+
+Jul 21st 2014 to Jul 24th 2014 changes:
+
+RMHC_SLAM.__init__ now takes map size in pixels and in meters, and does not take map scale anymore
+
+Laser.__init__ now takes lidar 'width' instead of min and max angles
+-it assumes the center of the scan is straight ahead (we liked it the other way)

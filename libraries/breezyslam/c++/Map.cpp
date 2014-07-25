@@ -33,10 +33,10 @@ using namespace std;
 #include "Position.hpp"
 #include "Map.hpp"
 
-Map::Map(int size_pixels, int scale_mm_per_pixel)
+Map::Map(int size_pixels, double size_meters)
 {
     this->map = new map_t;
-    map_init(this->map, size_pixels, scale_mm_per_pixel);
+    map_init(this->map, size_pixels, size_meters);
 }
 
 Map::~Map(void)

@@ -41,13 +41,13 @@ Change log:
 
 # Map size, scale
 MAP_SIZE_PIXELS          = 800
-MAP_SCALE_MM_PER_PIXEL   =  40
+MAP_SIZE_METERS          =  32
 
 from breezyslam.algorithms import Deterministic_SLAM, RMHC_SLAM
 from breezyslam.components import Laser
 from breezyslam.robots import WheeledRobot
 
-from mines import URG04, Rover, load_data
+from mines import MinesLaser, Rover, load_data
 from progressbar import ProgressBar
 from pgm_utils import pgm_save
 
@@ -74,9 +74,9 @@ def main():
     robot = Rover() if use_odometry else None
         
     # Create a CoreSLAM object with laser params and optional robot object
-    slam = RMHC_SLAM(URG04(), MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL, random_seed=seed) \
+    slam = RMHC_SLAM(MinesLaser(), MAP_SIZE_PIXELS, MAP_SIZE_METERS, random_seed=seed) \
            if seed \
-           else Deterministic_SLAM(URG04(), MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL)
+           else Deterministic_SLAM(URG04(), MAP_SIZE_PIXELS, MAP_SIZE_METERS)
            
     # Report what we're doing
     nscans = len(lidars)
@@ -98,7 +98,7 @@ def main():
                   
             # Convert odometry to velocities
             velocities = robot.computeVelocities(odometries[scanno])
-                                                     
+                                 
             # Update SLAM with lidar and velocities
             slam.update(lidars[scanno], velocities)
             
@@ -106,7 +106,7 @@ def main():
         
             # Update SLAM with lidar alone
             slam.update(lidars[scanno])
-        
+                    
         # Get new position
         x_mm, y_mm, theta_degrees = slam.getpos()    
         
@@ -145,10 +145,8 @@ def main():
 # Helpers ---------------------------------------------------------        
 
 def mm2pix(mm):
+        
+    return int(mm / (MAP_SIZE_METERS * 1000. / MAP_SIZE_PIXELS))  
     
-    return int(mm / MAP_SCALE_MM_PER_PIXEL)  
-    
-
-      
                     
 main()

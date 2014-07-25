@@ -44,11 +44,11 @@ public:
     
 /**
 * Builds a square Map object.
-* @param size_pixels         size in pixels
-* @param scale_mm_per_pixel  scale in mm / pixel
+* @param size_pixels  size in pixels
+* @param size_meters  size in meters
 * 
 */
-Map(int size_pixels, int scale_mm_per_pixel);
+Map(int size_pixels, double size_meters);
 
 
 /**

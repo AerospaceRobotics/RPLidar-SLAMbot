@@ -25,6 +25,7 @@ Change log
 21-JUN-2014 : SDL - Added support for SSE and NEON
 10-JUL-2014 : SDL - Changed Laser scan rate and angles from int to double
 21-JUL-2014 : SDL - Made RMHC position search avoid looping when max count is zero
+23-JUL-2014 : SDL - Simplified laser detection angle min, max to total angle
 */
 
 
@@ -129,7 +130,8 @@ map_laser_ray(
     int yp, 
     int value, 
     int alpha)
-{            
+{                    
+
     if (out_of_bounds(x1, map_size) || out_of_bounds(y1, map_size))
     {
         return; 
@@ -150,8 +152,7 @@ map_laser_ray(
     int incptrx = (x2 > x1) ? 1 : -1;
     int incptry = (y2 > y1) ? map_size : -map_size;
     int sincv = (value > NO_OBSTACLE) ? 1 : -1; 
-    
-    
+        
     int derrorv = 0;
     
     if (dx > dy) 
@@ -166,12 +167,19 @@ map_laser_ray(
         derrorv = abs(yp - y2);
     }
     
+    if (!derrorv)
+    {   /* XXX should probably throw an exception */
+        fprintf(stderr, "map_update: No error gradient: try increasing hole width\n");
+        exit(1);
+    }
+    
     int error = 2 * dyc - dxc;
     int horiz = 2 * dyc;
     int diago = 2 * (dyc - dxc);
     int errorv = derrorv / 2;
-    
+        
     int incv = (value - NO_OBSTACLE) / derrorv;   
+  
     int incerrorv = value - NO_OBSTACLE - derrorv * incv;     
     
     pixel_t * ptr = map_pixels + y1 * map_size + x1;
@@ -232,9 +240,9 @@ scan_update_xy(
     int j;
     for (j=0; j<scan->span; ++j)
     {    
-        double k = (double)(offset*scan->span+j) * (laser.angle_max_degrees-laser.angle_min_degrees) / 
+        double k = (double)(offset*scan->span+j) * laser.detection_angle_degrees / 
                    (laser.scan_size * scan->span - 1);
-        double angle = radians(laser.angle_min_degrees + k * rotation); 
+        double angle = radians(-laser.detection_angle_degrees/2 + k * rotation); 
         
         double x = distance * cos(angle) - k * horz_mm;
         double y = distance * sin(angle);
@@ -261,7 +269,7 @@ void
 map_init(
     map_t * map, 
     int size_pixels, 
-    int scale_mm_per_pixel)
+    double size_meters)
 {    
     int npix = size_pixels * size_pixels;
     
@@ -274,8 +282,10 @@ map_init(
     }    
     
     map->size_pixels = size_pixels;
+    map->size_meters = size_meters;    
     
-    map->scale_mm_per_pixel = scale_mm_per_pixel;     
+    /* precompute scale for efficiency */
+    map->scale_pixels_per_mm =  size_pixels / (size_meters * 1000);    
 }
 
 void
@@ -289,8 +299,8 @@ void map_string(
     map_t map,
     char * str)
 {
-    sprintf(str, "size = %d x %d pixels | scale = %d mm/pixel", 
-        map.size_pixels, map.size_pixels, map.scale_mm_per_pixel);
+    sprintf(str, "size = %d x %d pixels | = %f meters", 
+        map.size_pixels, map.size_pixels, map.size_meters);
 }
 
 void 
@@ -300,31 +310,33 @@ map_update(
     position_t position,
     int map_quality,
     double hole_width_mm)
-{
+{            
+    
     double position_theta_radians = radians(position.theta_degrees);
     double costheta = cos(position_theta_radians);
     double sintheta = sin(position_theta_radians);
     
-    int x1 = roundup(position.x_mm / map->scale_mm_per_pixel);
-    int y1 = roundup(position.y_mm / map->scale_mm_per_pixel);
-
+    int x1 = roundup(position.x_mm * map->scale_pixels_per_mm);
+    int y1 = roundup(position.y_mm * map->scale_pixels_per_mm);
+    
     int i = 0;
     for (i = 0; i != scan->npoints; i++) 
     {
         double x2p = costheta * scan->x_mm[i] - sintheta * scan->y_mm[i];
         double y2p = sintheta * scan->x_mm[i] + costheta * scan->y_mm[i];
         
-        int xp = roundup((position.x_mm + x2p) / map->scale_mm_per_pixel);
-        int yp = roundup((position.y_mm + y2p) / map->scale_mm_per_pixel);
+        int xp = roundup((position.x_mm + x2p) * map->scale_pixels_per_mm);
+        int yp = roundup((position.y_mm + y2p) * map->scale_pixels_per_mm);
         
         
         double dist = sqrt(x2p * x2p + y2p * y2p);
         double add = hole_width_mm / 2 / dist;
-        x2p *= 1./map->scale_mm_per_pixel * (1 + add);
-        y2p *= 1./map->scale_mm_per_pixel * (1 + add); 
+        x2p *= map->scale_pixels_per_mm * (1 + add);
+        y2p *= map->scale_pixels_per_mm * (1 + add); 
+
         
-        int x2 = roundup(position.x_mm / map->scale_mm_per_pixel + x2p);
-        int y2 = roundup(position.y_mm / map->scale_mm_per_pixel + y2p);
+        int x2 = roundup(position.x_mm * map->scale_pixels_per_mm + x2p);
+        int y2 = roundup(position.y_mm * map->scale_pixels_per_mm + y2p);
         
         int value = OBSTACLE;
         int q = map_quality;
@@ -334,10 +346,9 @@ map_update(
             q = map_quality / 4;
             value = NO_OBSTACLE;
         }
-        
-        map_laser_ray(map->pixels, map->size_pixels, x1, y1, x2, y2, xp, yp, value, q);        
+       
+        map_laser_ray(map->pixels, map->size_pixels, x1, y1, x2, y2, xp, yp, value, q);       
     }            
-
 }    
 
 void
@@ -460,12 +471,11 @@ laser_string(
     char * str)
 {
     sprintf(str, 
-        "scan_size=%d | scan_rate=%3.3f hz | angle_min=%3.3f deg | angle_max=%3.3f deg | " 
+        "scan_size=%d | scan_rate=%3.3f hz | detection_angle=%3.3f deg | " 
         "distance_no_detection=%7.4f mm | detection_margin=%d | offset=%4.4f m",
         laser.scan_size,
         laser.scan_rate_hz, 
-        laser.angle_min_degrees, 
-        laser.angle_max_degrees,
+        laser.detection_angle_degrees, 
         laser.distance_no_detection_mm,
         laser.detection_margin, 
         laser.offset_mm

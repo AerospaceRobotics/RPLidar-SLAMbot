@@ -1,6 +1,6 @@
 /**
 *
-* Laser.hpp - C++ header for Laser model class
+* Laser.hpp - C++ headers for Laser model classes
 *
 * Copyright (C) 2014 Simon D. Levy
 
@@ -43,9 +43,7 @@ public:
     * Lidar unit.
     * @param scan_size                  number of rays per scan
     * @param scan_rate_hz               laser scan rate in Hertz
-    * @param angle_min_degrees          minimum laser angle in degrees
-    * @param angle_max_degrees          maximum laser angle in degrees
-    * @param distance_no_detection_mm   scan distances above this are treated as infinfity
+    * @param detection_angle_degrees    detection angle in degrees (e.g. 240, 360)
     * @param detection_margin           number of rays at edges of scan to ignore
     * @param offset_mm                  forward/backward offset of laser motor from robot center
     * @return a new Laser object
@@ -54,11 +52,10 @@ public:
     Laser(
         int scan_size,
         float scan_rate_hz,
-        float angle_min_degrees,
-        float angle_max_degrees,
+        float detection_angle_degrees,
         float distance_no_detection_mm,
-        int detection_margin,
-        float offset_mm
+        int detection_margin = 0,
+        float offset_mm = 0.
         );
     
     /**
@@ -77,6 +74,29 @@ public:
 private:
     
     struct laser_t * laser;
+    
+};
+    
+class URG04LX : public Laser  
+{
+    
+public:
+    
+    /**
+    * Builds a Laser object from parameters based on the specifications for your 
+    * Lidar unit.
+    * @param detection_margin           number of rays at edges of scan to ignore
+    * @param offset_mm                  forward/backward offset of laser motor from robot center
+    * @return a new URG04LX object
+    * 
+    */
+    URG04LX(int detection_margin = 0, float offset_mm = 0) : 
+    Laser(682, 10, 240, 4000, detection_margin, offset_mm) { }
+    
+    /**
+    * Builds an empty Laser object (all parameters zero).
+    */
+    URG04LX(void) : Laser() {} 
     
 };
 

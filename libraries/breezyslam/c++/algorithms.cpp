@@ -55,7 +55,7 @@ int CoreSLAM::distanceScanToMap(
 CoreSLAM::CoreSLAM(
     Laser & laser, 
     int map_size_pixels, 
-    int map_scale_mm_per_pixel)
+    double map_size_meters)
 {
     // Set default params
     this->map_quality = DEFAULT_MAP_QUALITY;
@@ -72,7 +72,7 @@ CoreSLAM::CoreSLAM(
     this->scan_for_distance = this->scan_create(1);
     
     // Initialize the map 
-    this->map = new Map(map_size_pixels, map_scale_mm_per_pixel);
+    this->map = new Map(map_size_pixels, map_size_meters);
 }
 
 CoreSLAM::~CoreSLAM(void)
@@ -117,8 +117,8 @@ CoreSLAM::scan_update(Scan * scan, int * scan_mm)
     scan->update(scan_mm, this->hole_width_mm, *this->velocities);
 }
 
-SinglePositionSLAM::SinglePositionSLAM(Laser & laser, int map_size_pixels, int map_scale_mm_per_pixel) :
-CoreSLAM(laser, map_size_pixels, map_scale_mm_per_pixel)
+SinglePositionSLAM::SinglePositionSLAM(Laser & laser, int map_size_pixels, double map_size_meters) :
+CoreSLAM(laser, map_size_pixels, map_size_meters)
 {
     this->position = Position(this->init_coord_mm(), this->init_coord_mm(), 0);
 }
@@ -159,7 +159,8 @@ Position & SinglePositionSLAM::getpos(void)
 
 double SinglePositionSLAM::init_coord_mm(void)
 {
-    return 0.5 * this->map->map->size_pixels * this->map->map->scale_mm_per_pixel;
+    // Center of map
+    return 500 * this->map->map->size_meters;
 }
 
 
@@ -181,8 +182,8 @@ double SinglePositionSLAM::sintheta(void)
 
 // RMHC_SLAM class ------------------------------------------------------------------------------------------------------
 
-RMHC_SLAM::RMHC_SLAM(Laser & laser, int map_size_pixels, int map_scale_mm_per_pixel, unsigned random_seed) :
-SinglePositionSLAM(laser, map_size_pixels, map_scale_mm_per_pixel)
+RMHC_SLAM::RMHC_SLAM(Laser & laser, int map_size_pixels, double map_size_meters, unsigned random_seed) :
+SinglePositionSLAM(laser, map_size_pixels, map_size_meters)
 {    
     this->sigma_xy_mm = DEFAULT_SIGMA_XY_MM;
     this->sigma_theta_degrees = DEFAULT_SIGMA_THETA_DEGREES;
@@ -237,8 +238,8 @@ Position RMHC_SLAM::getNewPosition(Position & start_pos)
 
 // DeterministicSLAM class ---------------------------------------------------------------------------------------------
 
-Deterministic_SLAM::Deterministic_SLAM(Laser & laser, int map_size_pixels, int map_scale_mm_per_pixel) :
-SinglePositionSLAM(laser, map_size_pixels, map_scale_mm_per_pixel)
+Deterministic_SLAM::Deterministic_SLAM(Laser & laser, int map_size_pixels, double map_size_meters) :
+SinglePositionSLAM(laser, map_size_pixels, map_size_meters)
 {
 }
 

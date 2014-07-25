@@ -38,7 +38,7 @@ Change log:
 
 // SinglePositionSLAM params: gives us a nice-size map
 static const int MAP_SIZE_PIXELS        = 800;
-static const int MAP_SCALE_MM_PER_PIXEL =  40;
+static const double MAP_SIZE_METERS     =  32;
 
 static const int SCAN_SIZE 		        = 682;
 
@@ -135,19 +135,14 @@ static void load_data(
     fclose(fp);    
 }
 
-// Class for Hokuyo URG04 LIDAR ------------------------------------------------
+// Class for Mines verison of URG-04LX Lidar -----------------------------------
 
-class HokuyoURG04 : public Laser
+class MinesURG04LX : public URG04LX
 {
     
 public:
     
-    HokuyoURG04(void): Laser(
-        SCAN_SIZE,
-        10,          // scanRateHz
-        -120,        // angleMinDegrees
-        +120,        // angleMaxDegrees
-        4000,        // distanceNoDetectionMillimeters
+    MinesURG04LX(void): URG04LX(
         70,          // detectionMargin
         145)         // offsetMillimeters
     {
@@ -299,7 +294,7 @@ int coords2index(double x,  double y)
 
 int mm2pix(double mm)
 {
-    return (int)(mm / MAP_SCALE_MM_PER_PIXEL);
+    return (int)(mm / (MAP_SIZE_METERS * 1000. / MAP_SIZE_PIXELS));  
 }
 
 int main( int argc, const char** argv )
@@ -331,10 +326,10 @@ int main( int argc, const char** argv )
     unsigned char * mapbytes = new unsigned char[MAP_SIZE_PIXELS * MAP_SIZE_PIXELS];
         
     // Create SLAM object
-    HokuyoURG04 laser;
+    MinesURG04LX laser;
     SinglePositionSLAM * slam = random_seed ?
-    (SinglePositionSLAM*)new RMHC_SLAM(laser, MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL, random_seed) :
-    (SinglePositionSLAM*)new Deterministic_SLAM(laser, MAP_SIZE_PIXELS, MAP_SCALE_MM_PER_PIXEL);
+    (SinglePositionSLAM*)new RMHC_SLAM(laser, MAP_SIZE_PIXELS, MAP_SIZE_METERS, random_seed) :
+    (SinglePositionSLAM*)new Deterministic_SLAM(laser, MAP_SIZE_PIXELS, MAP_SIZE_METERS);
 	    
     // Report what we're doing
     int nscans = scans.size();

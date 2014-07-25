@@ -33,8 +33,9 @@ Change log:
 30-APR-2014 : SDL - Migrated CoreSLAM algorithm to pure Python
                   - Added Position, Map, Scan classes
                   - Added distanceScanToMap method
-04-MAY-2014 : SDL - changed back from meters to mm
-03-JUNE-2014: SDL - distanceScanToMap() returns -1 for infinity
+04-MAY-2014 : SDL - Changed back from meters to mm
+03-JUN-2014 : SDL - Made distanceScanToMap() return -1 for infinity
+23-JUL-2014 : SDL - Simplified API for Laser
 */
 
 #include <Python.h>
@@ -197,8 +198,7 @@ typedef struct
     
     int scan_size;
     double scan_rate_hz;
-    double angle_min_degrees;
-    double angle_max_degrees;
+    double detection_angle_degrees;
     double distance_no_detection_mm;
     int detection_margin;
     double offset_mm;
@@ -211,8 +211,7 @@ static laser_t pylaser2claser(Laser * pylaser)
     
     claser.scan_size = pylaser->scan_size; 
     claser.scan_rate_hz = pylaser->scan_rate_hz; 
-    claser.angle_min_degrees = pylaser->angle_min_degrees; 
-    claser.angle_max_degrees = pylaser->angle_max_degrees; 
+    claser.detection_angle_degrees = pylaser->detection_angle_degrees; 
     claser.distance_no_detection_mm = pylaser->distance_no_detection_mm; 
     claser.detection_margin = pylaser->detection_margin; 
     claser.offset_mm = pylaser->offset_mm; 
@@ -239,11 +238,22 @@ Laser_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static int
 Laser_init(Laser *self, PyObject *args, PyObject *kwds)
 {       
-    if (!PyArg_ParseTuple(args,"iddddid", 
+    static char* argnames[] = {
+        "scan_size", 
+        "scan_rate_hz", 
+        "detection_angle_degrees", 
+        "distance_no_detection_mm", 
+        "detection_margin", 
+        "offset_mm", 
+         NULL};
+    
+    self->detection_margin = 0;
+    self->offset_mm = 0;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "iddd|id", argnames,
         &self->scan_size,
         &self->scan_rate_hz,
-        &self->angle_min_degrees,
-        &self->angle_max_degrees,
+        &self->detection_angle_degrees,
         &self->distance_no_detection_mm,
         &self->detection_margin,
         &self->offset_mm))
@@ -274,21 +284,18 @@ Laser_str(Laser *self)
 "See data descriptors for details.\n"\
 "Laser.__init__(scanSize,\n"\
 "               scanRateHz,\n"\
-"               angleMinDegrees,\n"\
-"               angleMaxDegrees,\n"\
+"               detectionAngleDegrees,\n"\
 "               distanceNoDetectionMillimeters,\n"\
-"               detectionMargin,\n"\
-"               offsetMillimeters)"
+"               detectionMargin = 0,\n"\
+"               offsetMillimeters = 0)"
 
 static PyMemberDef Laser_members[] = {
     {"scan_size", T_INT, offsetof(Laser, scan_size), 0, 
     "number of rays per scan"},
     {"scan_rate_hz", T_DOUBLE, offsetof(Laser, scan_rate_hz), 0, 
     "laser scan rate in Hertz"},
-    {"angle_min_degrees", T_DOUBLE, offsetof(Laser, angle_min_degrees), 0, 
-    "minimum laser angle in degrees"},
-    {"angle_max_degrees", T_DOUBLE, offsetof(Laser, angle_max_degrees), 0, 
-    "maximum laser angle in degrees"},
+    {"detection_angle_degrees", T_DOUBLE, offsetof(Laser, detection_angle_degrees), 0, 
+    "laser detection angle in degrees (e.g. 240, 360)"},
     {"distance_no_detection_mm", T_DOUBLE, offsetof(Laser, distance_no_detection_mm), 0, 
     "scan distances above this are treated as infinfity"},
     {"detection_margin", T_INT, offsetof(Laser, detection_margin), 0, 
@@ -429,8 +436,9 @@ Scan_update(Scan *self, PyObject *args, PyObject *kwds)
     double hole_width_mm = 0;
     PyObject * py_velocities = NULL;
 
-    //if (!PyArg_ParseTupleAndKeywords(args, kwds,"Od|O", argnames,
-    if (!PyArg_ParseTuple(args, "Od|O",
+    static char* argnames[] = {"scans_mm", "hole_width_mm", "velocities", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds,"Od|O", argnames,
         &py_lidar, 
         &hole_width_mm,
         &py_velocities))
@@ -612,17 +620,20 @@ static int
 Map_init(Map *self, PyObject *args, PyObject *kwds)
 {                    
 	int size_pixels;
-	int scale_mm_per_pixel;
+	double size_meters;
 	PyObject * py_bytes = NULL;
 	
-    static char * argnames[] = {"size_pixels", "scale_mm_per_pixel", "bytes", NULL};
+    static char * argnames[] = {"size_pixels", "size_meters", "bytes", NULL};
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwds,"ii|O", argnames, &size_pixels, &scale_mm_per_pixel, &py_bytes))
+    if(!PyArg_ParseTupleAndKeywords(args, kwds,"id|O", argnames, 
+        &size_pixels, 
+        &size_meters, 
+        &py_bytes))
     {
         return error_on_raise_argument_exception("Map");
     }
-       
-    map_init(&self->map, size_pixels, scale_mm_per_pixel);
+           
+    map_init(&self->map, size_pixels, size_meters);
     
     if (py_bytes && !bad_mapbytes(py_bytes, size_pixels, "__init__"))
     {    

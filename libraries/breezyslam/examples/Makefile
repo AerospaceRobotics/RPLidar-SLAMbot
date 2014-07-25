@@ -48,8 +48,25 @@ bench: $(DATASET).pgm
 $(DATASET).pgm:
 	./log2pgm.py $(DATASET) $(USE_ODOMETRY) $(RANDOM_SEED)
 
+bigtest: log2pgm
+	./log2pgm.py $(DATASET) 1 $(RANDOM_SEED)
+	mv $(DATASET).pgm $(DATASET)_py.pgm
+	./log2pgm $(DATASET) 1 $(RANDOM_SEED)
+	mv $(DATASET).pgm $(DATASET)_cpp.pgm
+	$(VIEWER) $(DATASET)_*.pgm ~/Desktop/$(DATASET).pgm
+	./log2pgm.py $(DATASET) 0 $(RANDOM_SEED)
+	mv $(DATASET).pgm $(DATASET)_py.pgm
+	./log2pgm $(DATASET) 0 $(RANDOM_SEED)
+	mv $(DATASET).pgm $(DATASET)_cpp.pgm
+	$(VIEWER) $(DATASET)_*.pgm ~/Desktop/$(DATASET).pgm
+	./log2pgm.py $(DATASET) 1
+	mv $(DATASET).pgm $(DATASET)_py.pgm
+	./log2pgm $(DATASET) 1
+	mv $(DATASET).pgm $(DATASET)_cpp.pgm
+	$(VIEWER) $(DATASET)_*.pgm ~/Desktop/$(DATASET).pgm
+
 backup:
-	cp -r .. ~/Documents/bak-breezyslam
+	cp -r .. ~/Documents/slam/bak-breezyslam
 
 clean:
 	rm -f log2pgm *.pyc *.pgm *.o *~

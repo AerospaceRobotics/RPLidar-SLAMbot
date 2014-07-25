@@ -28,5 +28,13 @@ and
 
 from pybreezyslam import Scan, Map, Position, Laser
 
+class URG04LX(Laser):
+    '''
+    A class for the Hokuyo URG-04LX
+    '''
+    def __init__(self, detectionMargin = 0, offsetMillimeters = 0):
+        
+        Laser.__init__(self, 682, 10, 240, 4000, detectionMargin, offsetMillimeters)
+
 
 

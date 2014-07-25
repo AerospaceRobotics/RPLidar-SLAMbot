@@ -61,12 +61,12 @@ distance_scan_to_map(
 {    
     /* Pre-compute sine and cosine of angle for rotation */
     double position_theta_radians = radians(position.theta_degrees);
-    double costheta = cos(position_theta_radians) / map->scale_mm_per_pixel;
-    double sintheta = sin(position_theta_radians) / map->scale_mm_per_pixel;
+    double costheta = cos(position_theta_radians) * map->scale_pixels_per_mm;
+    double sintheta = sin(position_theta_radians) * map->scale_pixels_per_mm;
 
     /* Pre-compute pixel offset for translation */
-    double pos_x_pix = position.x_mm / map->scale_mm_per_pixel;
-    double pos_y_pix = position.y_mm / map->scale_mm_per_pixel;
+    double pos_x_pix = position.x_mm * map->scale_pixels_per_mm;
+    double pos_y_pix = position.y_mm * map->scale_pixels_per_mm;
 
 
     float32x4_t half_4  = vdupq_n_f32(0.5);

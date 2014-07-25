@@ -34,8 +34,7 @@ using namespace std;
 Laser::Laser(
     int scanSize,
     float scanRateHz,
-    float angle_min_degrees,
-    float angle_max_degrees,
+    float detection_angle_degrees,
     float distance_no_detection_mm,
     int detection_margin,
     float offset_mm
@@ -45,8 +44,7 @@ Laser::Laser(
     
     this->laser->scan_size = scanSize;
     this->laser->scan_rate_hz = scanRateHz;
-    this->laser->angle_min_degrees = angle_min_degrees;
-    this->laser->angle_max_degrees = angle_max_degrees;
+    this->laser->detection_angle_degrees = detection_angle_degrees;
     this->laser->distance_no_detection_mm = distance_no_detection_mm;
     this->laser->detection_margin = detection_margin;
     this->laser->offset_mm = offset_mm;
@@ -59,8 +57,7 @@ Laser::Laser(void)
 
     this->laser->scan_size = 0;
     this->laser->scan_rate_hz = 0;
-    this->laser->angle_min_degrees = 0;
-    this->laser->angle_max_degrees = 0;
+    this->laser->detection_angle_degrees = 0;
     this->laser->distance_no_detection_mm = 0;
     this->laser->detection_margin = 0;
     this->laser->offset_mm = 0;   

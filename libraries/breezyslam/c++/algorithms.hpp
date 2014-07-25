@@ -88,10 +88,10 @@ protected:
     * Creates a CoreSLAM object.
     * @param laser a Laser object containing parameters for your Lidar equipment
     * @param map_size_pixels the size of the desired map (map is square)
-    * @param map_scale_mm_per_pixel the scale of the desired map in mm / pixel
+    * @param map_size_meters the size of the area to be mapped, in meters
     * @return a new CoreSLAM object
     */
-    CoreSLAM(Laser & laser, int map_size_pixels, int map_scale_mm_per_pixel);
+    CoreSLAM(Laser & laser, int map_size_pixels, double map_size_meters);
 
     /**
     * Deallocates this CoreSLAM object.
@@ -163,10 +163,10 @@ protected:
     * Creates a SinglePositionSLAM object.
     * @param laser a Laser object containing parameters for your Lidar equipment
     * @param map_size_pixels the size of the desired map (map is square)
-    * @param map_scale_mm_per_pixel the scale of the desired map in mm / pixel
+    * @param map_size_meters the size of the area to be mapped, in meters
     * @return a new SinglePositionSLAM object
     */
-    SinglePositionSLAM(Laser & laser, int map_size_pixels, int map_scale_mm_per_pixel);
+    SinglePositionSLAM(Laser & laser, int map_size_pixels, double map_size_meters);
     
     
     /**
@@ -209,13 +209,13 @@ public:
     * Creates an RMHC_SLAM object.
     * @param laser a Laser object containing parameters for your Lidar equipment
     * @param map_size_pixels the size of the desired map (map is square)
-    * @param map_scale_mm_per_pixel the scale of the desired map in mm / pixel
+    * @param map_size_meters the size of the area to be mapped, in meters
     * @param random_seed seed for psuedorandom number generator in particle filter
     * @return a new CoreSLAM object
     */
     RMHC_SLAM(Laser & laser, 
         int map_size_pixels,
-        int map_scale_mm_per_pixel, 
+        double map_size_meters, 
         unsigned random_seed);
 
     ~RMHC_SLAM(void);    
@@ -274,10 +274,10 @@ public:
     * Creates a Deterministic_SLAM object.
     * @param laser a Laser object containing parameters for your Lidar equipment
     * @param map_size_pixels the size of the desired map (map is square)
-    * @param map_scale_mm_per_pixel the scale of the desired map in mm / pixel
+    * @param map_size_meters the size of the area to be mapped, in meters
     * @return a new CoreSLAM object
     */
-    Deterministic_SLAM(Laser & laser, int map_size_pixels, int map_scale_mm_per_pixel);
+    Deterministic_SLAM(Laser & laser, int map_size_pixels, double map_size_meters);
     
 protected:
 

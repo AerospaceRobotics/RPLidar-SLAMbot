@@ -30,8 +30,8 @@ You should have received a copy of the GNU Lesser General Public License
 along with this code.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
-import breezyslam.robots
-import breezyslam.components
+from breezyslam.robots import WheeledRobot
+from breezyslam.components import URG04LX
 
 import math
 
@@ -76,21 +76,19 @@ def load_data(datadir, dataset):
         
     return scans, odometries
 
-# Class for Hokuyo URG04 LIDAR -------------------------------------------------
-
-class URG04(breezyslam.components.Laser):
+class MinesLaser(URG04LX):
     
     def __init__(self):
         
-        breezyslam.components.Laser.__init__(self, 682, 10, -120, +120, 4000, 70, 145)
+        URG04LX.__init__(self, 70, 145)
         
 # Class for MinesRover custom robot ------------------------------------------
 
-class Rover(breezyslam.robots.WheeledRobot):
+class Rover(WheeledRobot):
     
     def __init__(self):
         
-        breezyslam.robots.WheeledRobot.__init__(self, 77, 165)
+        WheeledRobot.__init__(self, 77, 165)
         
         self.ticks_per_cycle = 2000
                         
@@ -100,7 +98,7 @@ class Rover(breezyslam.robots.WheeledRobot):
         
     def computeVelocities(self, odometry):
         
-        return breezyslam.robots.WheeledRobot.computeVelocities(self, odometry[0], odometry[1], odometry[2])
+        return WheeledRobot.computeVelocities(self, odometry[0], odometry[1], odometry[2])
 
     def extractOdometry(self, timestamp, leftWheel, rightWheel):
                 

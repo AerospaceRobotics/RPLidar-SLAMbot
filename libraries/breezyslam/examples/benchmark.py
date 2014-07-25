@@ -20,11 +20,11 @@ You should have received a copy of the GNU Lesser General Public License
 along with this code.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
-# Map scale
-MAP_SCALE_MM_PER_PIXEL          = 10
+# Size of square mapping area
+MAP_SIZE_METERS = 40
 
 # Width of holes (obstacles, walls) in saved map
-HOLE_WIDTH_MM                   = 600
+HOLE_WIDTH_MM   = 600
         
 from breezyslam.components import Laser, Map, Scan, Position
 from breezyslam.algorithms import distanceScanToMap
@@ -60,7 +60,7 @@ def main():
     mapsize_pixels = mapsize_pixels[0]
     
     # Create a Map object from the bytes; call it mymap to avoid name collision with Python's built-in map function
-    mymap = Map(mapsize_pixels, MAP_SCALE_MM_PER_PIXEL, mapbytes)
+    mymap = Map(mapsize_pixels, MAP_SIZE_METERS, mapbytes)
     
     # Create an empty Scan object with URG04_360 laser parameters
     scan = Scan(URG04())
@@ -74,7 +74,7 @@ def main():
     start_sec = time()
  
     # Precompute map size in mm
-    mapsize_mm = mapsize_pixels * MAP_SCALE_MM_PER_PIXEL
+    mapsize_mm = mapsize_pixels * MAP_SIZE_METERS
     
     # Create a random-number generator for points
     rand = Random()

@@ -46,7 +46,9 @@ typedef struct map_t {
     
     pixel_t * pixels;
     int size_pixels;
-    int scale_mm_per_pixel;
+    double size_meters;
+    
+    double scale_pixels_per_mm;
     
 } map_t;
 
@@ -71,8 +73,7 @@ typedef struct laser_t
 {
     int scan_size;                      /* number of points per scan */
     double scan_rate_hz;                /* scans per second */
-    double angle_min_degrees;           /* start angle for scan */
-    double angle_max_degrees;           /* end angle for scan */
+    double detection_angle_degrees;     /* e.g. 240, 360 */
     double distance_no_detection_mm;    /* default value when the laser returns 0 */
     int detection_margin;               /* first scan element to consider */
     double offset_mm;                   /* position of the laser wrt center of rotation */
@@ -95,7 +96,7 @@ void
 map_init(
     map_t * map, 
     int size_pixels, 
-    int scale_mm_per_pixel);
+    double size_meters);
 
 void
 map_free(
