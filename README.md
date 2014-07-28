@@ -36,7 +36,7 @@ Folder containing demonstration of our project, including the Python code to rea
 ### readLogData.py
 Stripped-down version of baseStationMain.py designed to re-create the mapping process of the room.  Useful for debugging and evaluating quality of log files.
 ### data_[date].log
-Example log file we've created to allow for project demonstation without the accompanying hardware.  The file is ascii-encoded decimal of the following format:
+Example log file we've created to allow for project demonstation without the accompanying hardware.  The file is ascii-encoded decimal, where each line is a new scan, and each scan takes the following format:
 
     <int16_t left_wheel_ticks> <int16_t right_wheel_ticks> <uint16_t counter_ms> <scan value at 0deg> <scan value at 1deg> ...
 ### [map_resolution]_pixels_per_meter.png
