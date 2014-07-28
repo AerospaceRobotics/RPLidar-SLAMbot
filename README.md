@@ -25,12 +25,23 @@ Tkinter
 #### Python3.x-specific libraries
 tkinter
 
-## breezySLAM_XBee.py
+## baseStationMain.py
 Contains all base station code to run the slamBot.  BreezySLAM for Python must already be installed on your machine to use this code.  Written in Python 2.7.6, tested and functioning in Python 3.4.0.  Written and tested in Ubuntu 14.04, however should run on all Linux machines.  Have not tested in Windows or OS X.
 
-## breezySLAM_XBee/breezySLAM_XBee.ino
+## slamBotMain/slamBotMain.ino
 Arduino code for the Seeeduino Mega on our slamBot.  Encoder and RPLidarDriver should be placed in the sketchbook folder to be properly added by the Arduino compiler at compile-time.  Cannot be run on an Arduino with fewer than 4 serial ports if full functionality is to be maintained.
 
+## readLogData.py
+Stripped-down version of baseStationMain.py designed to re-create the mapping process of the room.  Useful for debugging and evaluating quality of log files.
+
+## data_[date].log
+Example log file we've created to allow for project demonstation without the accompanying hardware.  The file is ascii-encoded decimal of the following format:
+
+    <int16_t left_wheel_ticks> <int16_t right_wheel_ticks> <uint16_t counter_ms> <scan value at 0deg> <scan value at 1deg> ...
+
+## [map_resolution]_pixels_per_meter.png
+Example image file of the map created by reading the log data in the example log file.  The title of the image file records the scale of the map in pixels per meter.  Default is 100 pixels per meter (1cm resolution).
+    
 ## cvslamshow.py
 OpenCV helper class from the BreezySLAM creator.  This is an upcoming rapid-map feature...
 
