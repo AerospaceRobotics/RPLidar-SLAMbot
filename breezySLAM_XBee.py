@@ -116,7 +116,6 @@ LASER_OFFSET_MM = 35 # this value is negative what it should be # update() retur
 
 # BreezySLAM map constants
 MAP_SIZE_PIXELS = MAP_SIZE_M*MAP_RES_PIX_PER_M # number of pixels across the entire map
-MAP_SCALE_MM_PER_PIXEL = int(1000/MAP_RES_PIX_PER_M)
 MAP_QUALITY = 50
 HOLE_WIDTH_MM = 100
 RANDOM_SEED = 0xabcd
@@ -175,7 +174,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
   def initUI(self):
     # current (and only) figure
-    self.fig = plt.figure(figsize=(9, 5), dpi=131) # create matplotlib figure (dpi calculated from $ xrandr)
+    self.fig = plt.figure(figsize=(9, 5), dpi=131.2) # create matplotlib figure (dpi calculated from $ xrandr)
     gs = gridspec.GridSpec(1,3) # layout of plots in figure
 
     # plot color settings
@@ -199,6 +198,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     # subplot 2 (relative map)
     self.ax2 = plt.subplot(gs[0,2]) # add plot 2 to figure
     self.ax2.set_title("Robot Environs") # name and label plot
+    self.ax2.set_xlabel("", family="monospace")
     self.myImg2 = self.ax2.imshow(dummyInitMat, interpolation="none", cmap=cmap, vmin=0, vmax=MAP_DEPTH, # plot data
               extent=[-INSET_SIZE_MM/2, INSET_SIZE_MM/2, -INSET_SIZE_MM/2, INSET_SIZE_MM/2])
 
@@ -304,7 +304,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
       # update robot position
       if init: self.slam.prevEncPos = self.slam.currEncPos # set both values the first time through
-      self.data.get_robot_pos(self.slam.updateSlam(self.data.points), init=init) # send data to slam to do stuff
+      self.data.getRobotPos(self.slam.updateSlam(self.data.points), init=init) # send data to slam to do stuff
 
       if init: init = False # initial data gathered successfully
 
@@ -318,6 +318,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
       self.myImg1.set_data(self.data.matrix) # 15ms
       self.myImg2.set_data(self.data.insetMatrix) # 15ms
+      self.ax2.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*self.data.robot_rel))
       self.canvas.draw() # 400ms
 
     if not self.resetting: self.after(MAP_RATE, lambda: self.updateMap()) # tkinter interrupt function
@@ -430,7 +431,7 @@ class Data():
                                  [0,0,0,0,0,0,0,0,0,0,0],
                                  [0,0,0,0,0,0,0,0,0,0,0]])
 
-  def get_robot_pos(self, curr_pos, init=False):
+  def getRobotPos(self, curr_pos, init=False):
     if init: self.robot_init = curr_pos
     self.robot_rel = tuple([curr-init for (curr,init) in zip(curr_pos,self.robot_init)]) # displacement from start position (center of map)
     xpix = float2int(curr_pos[0]*MM_2_PIX) # robot wrt map center (mO) + mO wrt matrix origin (xO)  = robot wrt xO [pix]
@@ -443,9 +444,7 @@ class Data():
       self.matrix = (MAP_DEPTH/255.0*dataMat).astype(np.uint8) # 8ms
 
     else: # use scan data directly
-      for point in self.points:
-        dist = point[0]
-        ang = point[1]
+      for (dist, ang) in self.points:
         # pixel location of scan point # point wrt robot + robot wrt x0 = point wrt x0
         x_pix = float2int( MAP_CENTER_PIX + ( self.robot_rel[0] + dist*np.sin((ang+self.robot_rel[2])*DEG_2_RAD) )*MM_2_PIX )
         y_pix = float2int( MAP_CENTER_PIX - ( self.robot_rel[1] + dist*np.cos((ang+self.robot_rel[2])*DEG_2_RAD) )*MM_2_PIX )
@@ -484,6 +483,7 @@ class Data():
     print("Image saved to " + filename)
 
     import subprocess
+
     subprocess.call(["eog", filename]) # open with eye of gnome
 
 
