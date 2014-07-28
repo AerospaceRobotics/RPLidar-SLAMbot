@@ -67,6 +67,9 @@ LOG_ALL_DATA = False
 def float2int(x):
   return int(0.5 + x)
 
+def paddedStr(inStr, length): # pad with spaces or trim string to desired length
+  return '{0: <{width}s}'.format(inStr, width=length)[0:length]
+
 # Packet constants (shared with Arduino)
 ENC_FLAG = '\xFE' # encoder data flag (&thorn)
 SCN_FLAG = '\xFF' # scan data flag (&yuml)
@@ -161,8 +164,8 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.RXQueue = queue.Queue() # data from serial to root # FIFO queue by default
     self.TXQueue = queue.Queue() # data from root to serial # FIFO queue by default
     self.statusStr = tk.StringVar() # status of serThread
-    self.statusStr.set("Initializing")
     self.resetting = False
+    self.paused = True
 
     # Start loops
     self.serThread = SerialThread(self.statusQueue, self.RXQueue, self.TXQueue) # initialize thread object, getting user input if required
@@ -241,17 +244,24 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       self.data = Data()
       self.slam = Slam()
       self.updateData(init=True) # pull data from queue, put into data matrix
-      self.updateMap() # draw new data matrix
+      self.updateMap(loop=True) # draw new data matrix
       self.sendCommand(loop=True) # check for user input and automatically send it
 
   def closeWin(self):
+    self.paused = True
+    self.statusStr.set(paddedStr("Paused",len(self.statusStr.get()))) # keep length of label constant
     if askokcancel("Quit?", "Are you sure you want to quit?"):
+      self.statusStr.set(paddedStr("Stopping",len(self.statusStr.get()))) # keep length of label constant
       print("Shutting down LIDAR")
       self.serThread.stop() # tell serial thread to stop running
       print("Closing program")
       self.quit() # kills interpreter (necessary for some reason)
+    else:
+      self.paused = False
 
   def saveImage(self): # function prototype until data is initialized
+    self.statusStr.set(paddedStr("Saving", len(self.statusStr.get()))) # keep length of label constant
+    self.updateMap(loop=False) # make sure we save the newest map
     self.data.saveImage()
 
   def sendCommand(self, loop=True, resendCount=0): # loop indicates how function is called: auto (True) or manual (False)
@@ -321,7 +331,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       self.ax2.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*self.data.robot_rel))
       self.canvas.draw() # 400ms
 
-    if not self.resetting: self.after(MAP_RATE, lambda: self.updateMap()) # tkinter interrupt function
+    if loop and not self.resetting: self.after(MAP_RATE, self.updateMap) # tkinter interrupt function
 
   def getScanData(self): # 50ms
     self.data.points = [] # wipe old data before writing new data
@@ -329,7 +339,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       try:
         queueItem = self.RXQueue.get_nowait()
       except queue.Empty: # something's wrong
-        self.statusStr.set("Connection lost at RXQueue. Send 'l' to restart LIDAR.")
+        self.statusStr.set("Connection lost at RXQueue. Send 'l' iff LIDAR stopped.")
         return # stop because no data to read
       else:
         if isinstance(queueItem[0], float): # scan data
@@ -609,7 +619,7 @@ class SerialThread(threading.Thread):
 
       if time.time() > tstart + 1.0: # report status of serial thread to root every second
         tstart += 1.0
-        self.statusQueue.put("Last sec: {} lagged, {} errors out of {} points, {} scans.".format(lagged,missed,total,scans))
+        self.statusQueue.put("Last sec: {:4} lagged, {:4} errors out of {:4} points, {:4} scans.".format(lagged,missed,total,scans))
         lagged, missed, total, scans = 0,0,0,0
 
 

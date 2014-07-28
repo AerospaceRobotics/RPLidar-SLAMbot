@@ -62,6 +62,9 @@ INTERNAL_MAP = True
 def float2int(x):
   return int(0.5 + x)
 
+def paddedStr(inStr, length): # pad with spaces or trim string to desired length
+  return '{0: <{width}s}'.format(inStr, width=length)[0:length]
+
 # Packet constants (shared with Arduino)
 DIST_MAX = 6000; # maximum distance
 ANG_MIN = 0
@@ -131,8 +134,8 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
     # Initialize objects
     self.statusStr = tk.StringVar() # status of serThread
-    self.statusStr.set("Initializing")
     self.resetting = False
+    self.paused = False
     self.fileIndex = 0
     self.fileContents = [[int(el) for el in rawline.split(' ')] for rawline in dataFile.read().strip().split('\n')]
 
@@ -144,7 +147,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
   def initUI(self):
     # current (and only) figure
-    self.fig = plt.figure(figsize=(9, 5), dpi=131.2) # create matplotlib figure (dpi calculated from $ xrandr)
+    self.fig = plt.figure(figsize=(9, 5), dpi=130.4) # create matplotlib figure (dpi calculated from $ xrandr)
     gs = gridspec.GridSpec(1,3) # layout of plots in figure
 
     # plot color settings
@@ -198,7 +201,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
         self.restartAll(rootInit=rootInit, funcStep=1)
       else: # reset called during program
         self.resetting = True # stop currently running loops
-        self.after(2000, lambda: self.restartAll(rootInit=rootInit, funcStep=1)) # release processor to let it wrap things up elsewhere
+        self.after(2000, lambda: self.restartAll(funcStep=1)) # release processor to let it wrap things up elsewhere
       return
 
     elif funcStep == 1:
@@ -208,33 +211,40 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       self.data = Data()
       self.slam = Slam()
       self.updateData(init=True) # pull data from queue, put into data matrix
-      self.updateMap() # draw new data matrix
+      self.updateMap(loop=True) # draw new data matrix
 
   def closeWin(self):
+    self.paused = True
+    self.statusStr.set(paddedStr("Paused",len(self.statusStr.get()))) # keep length of label constant
     if askokcancel("Quit?", "Are you sure you want to quit?"):
       print("Closing program")
       self.quit() # kills interpreter (necessary for some reason)
+    else:
+      self.paused = False
 
   def saveImage(self): # function prototype until data is initialized
+    self.statusStr.set(paddedStr("Saving", len(self.statusStr.get())))
+    self.updateMap(loop=False) # trigger map update
     self.data.saveImage()
 
   def updateData(self, init=False):
     self.dataInit = init
-    if self.fileIndex < len(self.fileContents): # ready to pull new scan data
+    if not self.paused and self.fileIndex < len(self.fileContents): # ready to pull new scan data
       self.getScanData() # pull data from log file
 
       # update robot position
       if init: self.slam.prevEncPos = self.slam.currEncPos # set both values the first time through
       self.data.getRobotPos(self.slam.updateSlam(self.data.currScan), init=init) # send data to slam to do stuff
 
-      self.statusStr.set('Scan = {0:4}'.format(self.fileIndex))
+      self.statusStr.set('Scan number: {0:4d}'.format(self.fileIndex))
 
       if init: init = False # initial data gathered successfully
 
     if not self.resetting: self.after(DATA_RATE, lambda: self.updateData(init=init)) # tkinter interrupt function
+    else: self.statusStr.set(paddedStr("Restarting", len(self.statusStr.get()))) # keep length of label constant
 
-  def updateMap(self):
-    if not self.dataInit: # wait until first data update to update map
+  def updateMap(self, loop=True):
+    if not self.paused and not self.dataInit: # wait until first data update to update map
       self.data.drawMap(self.slam.breezyMap if INTERNAL_MAP else None) # draw points, using updated slam, on the data matrix # 16ms
       self.data.drawInset() # new relative map
       self.data.drawRobot(self.data.matrix, self.data.robot_pix) # new robot position
@@ -244,7 +254,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       self.ax2.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*self.data.robot_rel))
       self.canvas.draw() # 400ms
 
-    if not self.resetting: self.after(MAP_RATE, lambda: self.updateMap()) # tkinter interrupt function
+    if loop and not self.resetting: self.after(MAP_RATE, self.updateMap) # tkinter interrupt function
 
   def getScanData(self):
     scan = self.fileContents[self.fileIndex]
