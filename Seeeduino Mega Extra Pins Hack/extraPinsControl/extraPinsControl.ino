@@ -35,7 +35,11 @@ void setup(){
 
   pinMode(13, OUTPUT);
   for (int i=70; i<86; i++) {
-    pinMode(i,INPUT); // calling pins by number
+    if (outputs == true) {
+      pinMode(i,OUTPUT)
+    } else {
+      pinMode(i,INPUT); // calling pins by number
+    }
   }
 
 

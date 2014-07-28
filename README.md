@@ -6,7 +6,7 @@ Evolving codebase for a SLAM-capable robot using the RoboPeak LIDAR sensor
 Contents:
 ---------
 
-All directories and files used by the SLAMbot
+All directories and files used by the SLAMbot.
 
 ## libraries
 The files required by the robot to run its sensors and support its functionality.
@@ -30,6 +30,9 @@ Contains all base station code to run the slamBot.  BreezySLAM for Python must a
 
 ## breezySLAM_XBee/breezySLAM_XBee.ino
 Arduino code for the Seeeduino Mega on our slamBot.  Encoder and RPLidarDriver should be placed in the sketchbook folder to be properly added by the Arduino compiler at compile-time.  Cannot be run on an Arduino with fewer than 4 serial ports if full functionality is to be maintained.
+
+## cvslamshow.py
+OpenCV helper class from the BreezySLAM creator.  This is an upcoming rapid-map feature...
 
 ## Linux Custom Baud Hack
 Allows you to use non-standard baud rates on a Linux machine (more info: [link](https://groups.google.com/forum/#!msg/ultimaker/BNjPpoJpfrE/Xmbp0XxTWXEJ)).
