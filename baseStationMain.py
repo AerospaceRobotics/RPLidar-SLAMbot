@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# breezySLAM_XBee.py - base station code for Aerospace Robotics SLAMbot project
+# baseStationMain.py - base station code for Aerospace Robotics SLAMbot project
 # 
 # Copyright (C) 2014 Michael Searing
 # 

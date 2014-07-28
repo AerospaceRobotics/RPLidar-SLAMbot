@@ -1,5 +1,5 @@
 /*
-breezySLAM_XBee.ino - rover code for Aerospace Robots SLAMbot project
+slamBotMain.ino - rover code for Aerospace Robots SLAMbot project
 
 Copyright (C) 2014 Michael Searing
 
