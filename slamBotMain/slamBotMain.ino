@@ -63,6 +63,9 @@ const unsigned short MASK2 = B00001111 << 8; // 0000111100000000
 const unsigned short MASK3 = B00001111; // 0000000000001111
 const unsigned short MASK4 = B11111111 << 4; // 0000111111110000
 
+// User-set constants
+bool debugXBee = false; // Should we let the computer talk directly to the XBee?
+
 // Scan data initialization
 unsigned short dist;
 unsigned short ang;
@@ -89,7 +92,6 @@ bool sleeping = false; // Do nothing except check for wake up command
 bool runLIDAR = false; // Do stuff with LIDAR?
 bool heartState = false; // Current state of heartbeat LED
 bool phaseMotorDriving = true; // True: Phase-Enable; False: In-In (for motor driver)
-bool debugXBee = false; // Should we let the computer talk directly to the XBee?
 
 // Control value initialization
 unsigned char motorspeed = 237; // approx motor speed for 360 readings per revolution
