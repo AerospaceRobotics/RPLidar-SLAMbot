@@ -38,6 +38,8 @@ else: # 3.x
   import queue
   def raw_input(inStr): return input(inStr)
 
+import tkFont
+
 from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.components import Laser
 
@@ -78,7 +80,7 @@ PKT_SIZE = 4 # length of scan data packet [bytes]
 ENC_SIZE = 8 # length of encoder data packet [bytes]
 DFAC = 0.5; # distance resolution factor [1/mm]
 AFAC = 8.0; # angle resolution factor [1/deg]
-XBEE_BAUD = 250000 # maximum baud rate allowed by Arduino and XBee [hz]
+XBEE_BAUD = 250000 # maximum baud rate allowed by Arduino and XBee [hz] # 250k=0x3D090, 125k=0x1E848
 DIST_MIN = 100; # minimum distance
 DIST_MAX = 6000; # maximum distance
 ANG_MIN = 0; # minimum scan angle
@@ -165,7 +167,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.TXQueue = queue.Queue() # data from root to serial # FIFO queue by default
     self.statusStr = tk.StringVar() # status of serThread
     self.resetting = False
-    self.paused = True
+    self.paused = False
 
     # Start loops
     self.serThread = SerialThread(self.statusQueue, self.RXQueue, self.TXQueue) # initialize thread object, getting user input if required
@@ -174,6 +176,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.restartAll(rootInit=True) # contains all initialization that needs to be re-done in case of a soft reset
     print("Each pixel is " + str(round(1000.0/MAP_RES_PIX_PER_M,1)) + "mm, or " + str(round(1000.0/MAP_RES_PIX_PER_M/25.4,2)) + "in.")
     self.lift() # bring tk window to front if initialization finishes
+    self.focus_set()
 
   def initUI(self):
     # current (and only) figure
@@ -223,10 +226,11 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
     tk.Button(self, text="Restart (r)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
     tk.Label(self, text="Command: ").pack(side="left")
-    self.entryBox = tk.Entry(master=self)
+    self.entryBox = tk.Entry(master=self, width=7)
     self.entryBox.pack(side="left", padx = 5)
     tk.Button(self, text="Send (enter)", command=lambda: self.sendCommand(loop=False)).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
-    tk.Label(self, textvariable=self.statusStr).pack(side="left", padx=5, pady=5)
+    monospaceFont = tkFont.Font(family="Courier", weight='bold', size=12)
+    tk.Label(self, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
     tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
 
   def restartAll(self, rootInit=False, funcStep=0): # two-part soft reset function
@@ -260,9 +264,64 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       self.paused = False
 
   def saveImage(self): # function prototype until data is initialized
-    self.statusStr.set(paddedStr("Saving", len(self.statusStr.get()))) # keep length of label constant
+    self.statusStr.set(paddedStr("Saving. Close image to resume.", len(self.statusStr.get()))) # keep length of label constant
     self.updateMap(loop=False) # make sure we save the newest map
     self.data.saveImage()
+
+  def getScanData(self):
+    self.data.points = [] # wipe old data before writing new data
+    while True:
+      # Make sure there's actually data to get
+      try:
+        queueItem = self.RXQueue.get_nowait()
+      except queue.Empty: # something's wrong
+        self.statusStr.set(paddedStr("RXQueue empty. Send 'l' iff LIDAR stopped.", len(self.statusStr.get())))
+        return # stop because no data to read
+      else:
+        if isinstance(queueItem[0], float): # scan data
+          self.data.points.append(queueItem)
+        elif isinstance(queueItem[1], int): # encoder data
+          self.slam.currEncPos = queueItem
+          break # encoder data signals new scan
+        else:
+          print("RXQueue broken (something weird happened...)")
+
+  def updateData(self, init=False):
+    self.dataInit = init
+    if not self.paused:
+      try: # do this before anything else
+        status = self.statusQueue.get_nowait()
+      except queue.Empty:
+        pass
+      else:
+        length = len(self.statusStr.get())
+        self.statusStr.set(paddedStr(status, length) if length != 0 else status)
+
+      if self.RXQueue.qsize() > NUM_SAMP: # ready to pull new scan data
+        # pull data from serial thread via RXQueue
+        self.getScanData() # 2ms
+
+        # update robot position
+        if init: self.slam.prevEncPos = self.slam.currEncPos # set both values the first time through
+        self.data.getRobotPos(self.slam.updateSlam(self.data.points), init=init) # send data to slam to do stuff # 15ms
+
+        if init: init = False # initial data gathered successfully
+
+    if not self.resetting: self.after(DATA_RATE, lambda: self.updateData(init=init)) # tkinter interrupt function
+    else: self.statusStr.set(paddedStr("Restarting", len(self.statusStr.get()))) # if loop ends, we're restarting
+
+  def updateMap(self, loop=True):
+    if not self.paused and not self.dataInit: # wait until first data update to update map
+      self.data.drawMap(self.slam.breezyMap if INTERNAL_MAP else None) # draw points, using updated slam, on the data matrix # 16ms
+      self.data.drawInset() # new relative map # 6ms
+      self.data.drawRobot(self.data.matrix, self.data.robot_pix) # new robot position # 0.2ms
+
+      self.myImg1.set_data(self.data.matrix) # 20ms
+      self.myImg2.set_data(self.data.insetMatrix) # 0.4ms
+      self.ax2.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*self.data.robot_rel))
+      self.canvas.draw() # 200ms
+
+    if loop and not self.resetting: self.after(MAP_RATE, self.updateMap) # tkinter interrupt function
 
   def sendCommand(self, loop=True, resendCount=0): # loop indicates how function is called: auto (True) or manual (False)
     # first, figure out which string to send # note that ACK-checking only applies to value-setting commands in 'vwasd'
@@ -298,57 +357,6 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
         pass # wait until manual-send for other commands
 
     if loop and not self.resetting: self.after(CMD_RATE, lambda: self.sendCommand(resendCount=resendCount)) # tkinter interrupt function
-
-  def updateData(self, init=False):
-    self.dataInit = init
-    try: # do this before anything else
-      status = self.statusQueue.get_nowait()
-    except queue.Empty:
-      pass
-    else:
-      self.statusStr.set(status)
-
-    if self.RXQueue.qsize() > NUM_SAMP: # ready to pull new scan data
-      # pull data from serial thread via RXQueue
-      self.getScanData()
-
-      # update robot position
-      if init: self.slam.prevEncPos = self.slam.currEncPos # set both values the first time through
-      self.data.getRobotPos(self.slam.updateSlam(self.data.points), init=init) # send data to slam to do stuff
-
-      if init: init = False # initial data gathered successfully
-
-    if not self.resetting: self.after(DATA_RATE, lambda: self.updateData(init=init)) # tkinter interrupt function
-
-  def updateMap(self):
-    if not self.dataInit: # wait until first data update to update map
-      self.data.drawMap(self.slam.breezyMap if INTERNAL_MAP else None) # draw points, using updated slam, on the data matrix # 16ms
-      self.data.drawInset() # new relative map
-      self.data.drawRobot(self.data.matrix, self.data.robot_pix) # new robot position
-
-      self.myImg1.set_data(self.data.matrix) # 15ms
-      self.myImg2.set_data(self.data.insetMatrix) # 15ms
-      self.ax2.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*self.data.robot_rel))
-      self.canvas.draw() # 400ms
-
-    if loop and not self.resetting: self.after(MAP_RATE, self.updateMap) # tkinter interrupt function
-
-  def getScanData(self): # 50ms
-    self.data.points = [] # wipe old data before writing new data
-    while True:
-      try:
-        queueItem = self.RXQueue.get_nowait()
-      except queue.Empty: # something's wrong
-        self.statusStr.set("Connection lost at RXQueue. Send 'l' iff LIDAR stopped.")
-        return # stop because no data to read
-      else:
-        if isinstance(queueItem[0], float): # scan data
-          self.data.points.append(queueItem)
-        elif isinstance(queueItem[1], int): # encoder data
-          self.slam.currEncPos = queueItem
-          break # encoder data signals new scan
-        else:
-          print("RXQueue broken")
 
 
 class Slam(RMHC_SLAM):
@@ -469,7 +477,7 @@ class Data():
     rad = INSET_SIZE_PIX/2 # half the size of the final segment
 
     mapChunk = self.matrix[y-raw:y+raw, x-raw:x+raw]
-    self.insetMatrix = rotate(mapChunk, self.robot_rel[2], output=np.uint8, reshape=False)[raw-rad:raw+rad, raw-rad:raw+rad]
+    self.insetMatrix = rotate(mapChunk, self.robot_rel[2], output=np.uint8, order=1, reshape=False)[raw-rad:raw+rad, raw-rad:raw+rad]
     self.drawRobot(self.insetMatrix, (INSET_SIZE_PIX/2,INSET_SIZE_PIX/2,0))
 
   def drawRobot(self, mapObject, pos):
@@ -614,12 +622,12 @@ class SerialThread(threading.Thread):
       # in order received (future data chunks comma-separated): dist[0:12]            ang[0:3], ang[4:12]
       pointLine = self.ser.read(PKT_SIZE) # distance and angle (blocking)
       if len(pointLine) < PKT_SIZE: # timeout occurs
-        self.statusQueue.put("Connection lost at ser.read(). Send 'l' to restart LIDAR.")
+        self.statusQueue.put("ser.read() timeout. Send 'l' iff LIDAR stopped.")
         continue # try again
 
       if time.time() > tstart + 1.0: # report status of serial thread to root every second
         tstart += 1.0
-        self.statusQueue.put("Last sec: {:4} lagged, {:4} errors out of {:4} points, {:4} scans.".format(lagged,missed,total,scans))
+        self.statusQueue.put("{:4} lagged, {:2} errors in {:4} points, {:2} scans.".format(lagged,missed,total,scans))
         lagged, missed, total, scans = 0,0,0,0
 
 
