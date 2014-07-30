@@ -49,6 +49,7 @@ import threading # allow serial checking to happen on top of tkinter interface t
 import serial
 from serial.tools import list_ports # get computer's port info
 import struct # parse incoming serial data
+from math import copysign
 import numpy as np
 from scipy.ndimage.interpolation import rotate
 
@@ -64,6 +65,7 @@ TALK_TO_XBEES = True if len(sys.argv) > 1 else False # non-blocking user input (
 USE_ODOMETRY = True
 INTERNAL_MAP = True
 LOG_ALL_DATA = False
+dataFileName = "data.log"
 
 # Macros (here's me sort of wishing this were C++...)
 def float2int(x):
@@ -80,7 +82,7 @@ PKT_SIZE = 4 # length of scan data packet [bytes]
 ENC_SIZE = 8 # length of encoder data packet [bytes]
 DFAC = 0.5; # distance resolution factor [1/mm]
 AFAC = 8.0; # angle resolution factor [1/deg]
-XBEE_BAUD = 250000 # maximum baud rate allowed by Arduino and XBee [hz] # 250k=0x3D090, 125k=0x1E848
+XBEE_BAUD = 125000 # maximum baud rate allowed by Arduino and XBee [hz] # 250k=0x3D090, 125k=0x1E848, 111111=7
 DIST_MIN = 100; # minimum distance
 DIST_MAX = 6000; # maximum distance
 ANG_MIN = 0; # minimum scan angle
@@ -91,18 +93,18 @@ MASK = 0b0000111111111111 # bits 0 .. 11
 NUM_SAMP = 360 # number of serial packets needed for 1 scan (guesstimate)
 
 # Map constants
-MAP_SIZE_M = 16 # size of region to be mapped [m]
-VIEW_SIZE_M = 6 # default size of region to be shown in display [m]
-INSET_SIZE_M = 2 # size of relative map
+MAP_SIZE_M = 20.0 # size of region to be mapped [m]
+VIEW_SIZE_M = 6.0 # default size of region to be shown in display [m]
+INSET_SIZE_M = 3.0 # size of relative map
 MAP_RES_PIX_PER_M = 100 # number of pixels of data per meter [pix/m]
-MAP_DEPTH = 10 # depth of data points on map (levels of certainty)
+MAP_DEPTH = 5 # depth of data points on map (levels of certainty)
 
 # GUI constants
 CMD_RATE = 100 # minimum time between auto-send commands [ms]
 DATA_RATE = 50 # minimum time between updating data from lidar [ms]
 MAP_RATE = 500 # minimum time between updating map [ms]
 MAX_RX_TRIES = 8 # max number of times to try to tell LIDAR to start before giving up
-MAX_TX_TRIES = 3 # max number of times to try to resend command before giving up
+MAX_TX_TRIES = 6 # max number of times to try to resend command before giving up
 SER_READ_TIMEOUT = 1 # time to wait for data from Arduino before connection considered lost [s]
 
 # Robot constants
@@ -120,17 +122,14 @@ SCAN_DETECTION_MARGIN = 0
 LASER_OFFSET_MM = 35 # this value is negative what it should be # update() returns LIDAR unit position
 
 # BreezySLAM map constants
-MAP_SIZE_PIXELS = MAP_SIZE_M*MAP_RES_PIX_PER_M # number of pixels across the entire map
+MAP_SIZE_PIXELS = int(MAP_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the entire map
 MAP_QUALITY = 50
-HOLE_WIDTH_MM = 100
+HOLE_WIDTH_MM = 500
 RANDOM_SEED = 0xabcd
 
 # Map constants (derived)
-MAP_SIZE_MM = int(MAP_SIZE_M*1000)
-VIEW_SIZE_MM = int(VIEW_SIZE_M*1000)
-INSET_SIZE_MM = int(INSET_SIZE_M*1000)
-INSET_SIZE_PIX = INSET_SIZE_M*MAP_RES_PIX_PER_M # number of pixels across the inset map
-MAP_CENTER_PIX = MAP_SIZE_PIXELS/2 # indices of map center []
+INSET_SIZE_PIX = int(INSET_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the inset map
+MAP_CENTER_PIX = int(MAP_SIZE_PIXELS/2) # indices of map center []
 MM_2_PIX = MAP_RES_PIX_PER_M/1000.0 # [pix/mm]
 DEG_2_RAD = np.pi/180.0
 ROBOT_DEPTH = MAP_DEPTH + 1 # value of robot in map storage
@@ -168,6 +167,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.statusStr = tk.StringVar() # status of serThread
     self.resetting = False
     self.paused = False
+    self.markers = []
 
     # Start loops
     self.serThread = SerialThread(self.statusQueue, self.RXQueue, self.TXQueue) # initialize thread object, getting user input if required
@@ -194,9 +194,9 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.ax1.set_ylabel("Y Position [mm]")
     dummyInitMat = np.zeros((2,2), dtype=np.uint8) # need to plot something to setup tkinter before dependent objects
     self.myImg1 = self.ax1.imshow(dummyInitMat, interpolation="none", cmap=cmap, vmin=0, vmax=MAP_DEPTH, # plot data
-              extent=[-MAP_SIZE_MM/2, MAP_SIZE_MM/2, -MAP_SIZE_MM/2, MAP_SIZE_MM/2]) # extent sets labels by matching limits to edges of matrix
-    self.ax1.set_xlim(-VIEW_SIZE_MM/2, VIEW_SIZE_MM/2) # pre-zoom image to defined default VIEW_SIZE_MM
-    self.ax1.set_ylim(-VIEW_SIZE_MM/2, VIEW_SIZE_MM/2)
+              extent=[-MAP_SIZE_M/2, MAP_SIZE_M/2, -MAP_SIZE_M/2, MAP_SIZE_M/2]) # extent sets labels by matching limits to edges of matrix
+    self.ax1.set_xlim(-VIEW_SIZE_M/2, VIEW_SIZE_M/2) # pre-zoom image to defined default MAP_SIZE_M
+    self.ax1.set_ylim(-VIEW_SIZE_M/2, VIEW_SIZE_M/2)
 
     # colorbar
     self.cbar = self.fig.colorbar(self.myImg1, orientation="vertical") # create colorbar
@@ -206,11 +206,12 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.ax2.set_title("Robot Environs") # name and label plot
     self.ax2.set_xlabel("", family="monospace")
     self.myImg2 = self.ax2.imshow(dummyInitMat, interpolation="none", cmap=cmap, vmin=0, vmax=MAP_DEPTH, # plot data
-              extent=[-INSET_SIZE_MM/2, INSET_SIZE_MM/2, -INSET_SIZE_MM/2, INSET_SIZE_MM/2])
+              extent=[-INSET_SIZE_M/2, INSET_SIZE_M/2, -INSET_SIZE_M/2, INSET_SIZE_M/2])
+    self.drawMarker(self.ax2, (0,0,0), temporary=False) # draw permanent robot at center of inset map
 
     # turn figure data into matplotlib draggable canvas
     self.canvas = FigureCanvasTkAgg(self.fig, master=self) # tkinter interrupt function
-    self.canvas.draw()
+    # self.canvas.draw()
     self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1) # put figure at top of window
 
     # add matplotlib toolbar for easy navigation around map
@@ -268,6 +269,15 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.updateMap(loop=False) # make sure we save the newest map
     self.data.saveImage()
 
+  def removeMarkers(self):
+    for i in range(len(self.markers)):
+      self.markers[i].remove()
+      del self.markers[i]
+
+  def drawMarker(self, ax, pos, temporary=True):
+    marker = ax.plot(pos[0]/1000, pos[1]/1000, markersize=8, color='red', marker=(3,1,-pos[2]), markeredgewidth=0, aa=False)
+    if temporary: self.markers.extend(marker) # marker is a list of matplotlib.line.Line2D objects
+
   def getScanData(self):
     self.data.points = [] # wipe old data before writing new data
     while True:
@@ -312,15 +322,21 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
   def updateMap(self, loop=True):
     if not self.paused and not self.dataInit: # wait until first data update to update map
+      # create maps
       self.data.drawMap(self.slam.breezyMap if INTERNAL_MAP else None) # draw points, using updated slam, on the data matrix # 16ms
       self.data.drawInset() # new relative map # 6ms
-      self.data.drawRobot(self.data.matrix, self.data.robot_pix) # new robot position # 0.2ms
 
+      # send maps to image object
       self.myImg1.set_data(self.data.matrix) # 20ms
       self.myImg2.set_data(self.data.insetMatrix) # 0.4ms
-      self.ax2.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*self.data.robot_rel))
-      self.canvas.draw() # 200ms
 
+      # finishing touches
+      self.removeMarkers() # delete old robot position from map
+      self.drawMarker(self.ax1, self.data.robot_rel) # add new robot position to map # 0.2ms
+      self.ax2.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*self.data.robot_rel))
+
+      # refresh the figure
+      self.canvas.draw() # 200ms
     if loop and not self.resetting: self.after(MAP_RATE, self.updateMap) # tkinter interrupt function
 
   def sendCommand(self, loop=True, resendCount=0): # loop indicates how function is called: auto (True) or manual (False)
@@ -373,7 +389,7 @@ class Slam(RMHC_SLAM):
     RMHC_SLAM.__init__(self, \
                        laser, \
                        MAP_SIZE_PIXELS, \
-                       MAP_SIZE_M, \
+                       int(MAP_SIZE_M), \
                        MAP_QUALITY, \
                        HOLE_WIDTH_MM, \
                        RANDOM_SEED)
@@ -417,12 +433,15 @@ class Slam(RMHC_SLAM):
     dxy = TICK_2_MM * (dLeft + dRight)/2 # forward change in position
     dtheta = TICK_2_DEG * (dLeft - dRight)/2 # positive theta is clockwise
 
+    if abs(dxy) > 50 or abs(dtheta) > 20: # encoder data is messed up
+      return copysign(2, dxy), copysign(1, dtheta), 1/SCAN_RATE_HZ
     return dxy, dtheta, dt/1000.0 # [mm], [deg], [s]
 
 
 class Data():
   # init creates data matrix and information vectors for processing
-  # drawPoints adds scan data to data matrix
+  # getRobotPos populates robot position information needed by other methods of Data
+  # drawMap adds scan data to data matrix
   # drawInset adds scan data to inset matrix
   # drawRobot adds robot position to data matrix, generally using slam to find this position
   # saveImage uses PIL to write an image file from the data matrix
@@ -431,6 +450,7 @@ class Data():
     self.matrix = np.zeros((MAP_SIZE_PIXELS, MAP_SIZE_PIXELS), dtype=np.uint8) # initialize data matrix
     self.insetMatrix = np.zeros((INSET_SIZE_PIX, INSET_SIZE_PIX), dtype=np.uint8) # initialize inset matrix
     self.points = [] # current scan data
+    self.trajectory = [] # robot location history, in pixels
     self.robot_init = () # x [mm], y [mm], th [deg], defined from lower-left corner of map
     self.robot_rel = () # robot location relative to start position
     self.robot_pix = () # robot pixel location, relative to upper-left (0,0) of image matrix
@@ -455,6 +475,7 @@ class Data():
     xpix = float2int(curr_pos[0]*MM_2_PIX) # robot wrt map center (mO) + mO wrt matrix origin (xO)  = robot wrt xO [pix]
     ypix = MAP_SIZE_PIXELS-float2int(curr_pos[1]*MM_2_PIX) # y is negative because pixels increase downwards (+y_mm = -y_pix = -np rows)
     self.robot_pix = (xpix, ypix, self.robot_rel[2])
+    self.trajectory.append(self.robot_pix)
 
   def drawMap(self, breezyMap): # 7ms
     if INTERNAL_MAP: # get data from internal BreezySLAM map
@@ -477,19 +498,27 @@ class Data():
     rad = INSET_SIZE_PIX/2 # half the size of the final segment
 
     mapChunk = self.matrix[y-raw:y+raw, x-raw:x+raw]
-    self.insetMatrix = rotate(mapChunk, self.robot_rel[2], output=np.uint8, order=1, reshape=False)[raw-rad:raw+rad, raw-rad:raw+rad]
-    self.drawRobot(self.insetMatrix, (INSET_SIZE_PIX/2,INSET_SIZE_PIX/2,0))
+    s = slice(raw-rad, raw+rad, 1) # region of rotated chunk that we want
+    self.insetMatrix = rotate(mapChunk, self.robot_rel[2], output=np.uint8, order=1, reshape=False)[s,s]
 
   def drawRobot(self, mapObject, pos):
-    robotMat = rotate(self.robotSprite, -pos[2], output=np.uint8)
+    robotMat = rotate(self.robotSprite, -pos[2])
     hgt = (robotMat.shape[0]-1)/2 # indices of center of robot
     wid = (robotMat.shape[1]-1)/2
-    mapObject[pos[1]-hgt:pos[1]+hgt+1, pos[0]-wid:pos[0]+wid+1][robotMat.astype(bool)] = ROBOT_DEPTH
+    x = slice(pos[0]-wid, pos[0]+wid+1, 1) # columns
+    y = slice(pos[1]-hgt, pos[1]+hgt+1, 1) # rows
+    mapObject[y,x][robotMat.astype(bool)] = ROBOT_DEPTH
+
+  def drawPath(self, mapObject, inSlice):
+    for x, y, theta in self.trajectory[inSlice]:
+      self.matrix[y,x] = ROBOT_DEPTH
 
   def saveImage(self):
     from PIL import Image # don't have PIL? sorry (try pypng)
 
     imgData = self.matrix # get map
+    self.drawRobot(imgData, self.robot_pix)
+    self.drawPath(imgData, slice(None,None,None)) # draw all values # same as ":"
     robot = imgData > MAP_DEPTH # save location of robot
     imgData = MAP_DEPTH - imgData # invert colors to make 0 black and MAP_DEPTH white
     GB = np.where(robot, 0, 255.0/MAP_DEPTH*imgData).astype(np.uint8) # scale map data and assign to red, green, and blue layers
@@ -500,7 +529,7 @@ class Data():
     im.save(filename) # save image
     print("Image saved to " + filename)
 
-    import subprocess
+    import subprocess # used to display the image (not necessary for save)
 
     subprocess.call(["eog", filename]) # open with eye of gnome
 
@@ -544,7 +573,7 @@ class SerialThread(threading.Thread):
       print("Successfully connected to: %s" % portName)
 
   def talkToXBee(self): # allow direct interaction with XBee (Arduino code needs modification)
-    if raw_input("Configure this (Arduino's) XBee before mapping? [y/N]: ") == 'y':
+    if raw_input("Configure this (Arduino's) XBee before mapping? [y/N]: ").lower() == 'y':
       while True:
         inputStr = raw_input("Enter XBee command: ")
         sendStr = inputStr if (inputStr == "+++" or inputStr == '') else inputStr + '\x0D'
@@ -658,7 +687,7 @@ class SerialThread(threading.Thread):
 
 
 if __name__ == '__main__':
-  if LOG_ALL_DATA: dataFile = open('data.log','w')
+  if LOG_ALL_DATA: dataFile = open(dataFileName,'w')
   root = Root() # create Tkinter window, containing entire App
   root.mainloop() # start Tkinter loop
   if LOG_ALL_DATA: dataFile.close()

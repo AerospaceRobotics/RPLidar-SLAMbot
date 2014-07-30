@@ -46,7 +46,7 @@ const unsigned short PKT_SIZE = 4; // bytes per point
 const unsigned short BUF_SIZE = PKT_SIZE * BUF_LEN; // bytes per transmit packet
 const float DFAC = 0.5; // distance resolution factor [1/mm]
 const unsigned short AFAC = 8; // angle resolution factor [1/deg]
-#define XBEE_BAUD 250000 // maximum baud rate allowed by Arduino and XBee [hz]
+#define XBEE_BAUD 125000 // maximum baud rate allowed by Arduino and XBee [hz]
 const unsigned short DIST_MIN = 100*DFAC; // minimum distance, scaled to TX value
 const unsigned short DIST_MAX = 6000*DFAC; // maximum distance, scaled to TX value
 const unsigned short ANG_MIN = 0*AFAC; // minimum scan angle, scaled to TX value
@@ -134,8 +134,7 @@ void setup() {
   digitalWrite(MOTOR_MODE, phaseMotorDriving);
   nextBeat = millis() + 1000; // beat heart for fist time 1 second after setup
 
-  leftEncoder.write(0);
-  rightEncoder.write(0);
+  zeroEncodersAbs();
 }
 
 void loop() { // 16us
@@ -247,6 +246,13 @@ void zeroEncoders() {
   leftWheelTemp = 0;
   rightWheelTemp = 0;
 }
+void zeroEncodersAbs() {
+  leftEncoder.write(0);
+  rightEncoder.write(0);
+  leftWheelAbs = 0;
+  rightWheelAbs = 0;
+  zeroEncoders();
+}
 
 // Keyboard Control
 void checkXBeeInput() {
@@ -269,7 +275,7 @@ void checkXBeeInput() {
 
   if(inChar == 'x') {runLIDAR = false; sleeping = !sleeping; beatDuration = sleeping?1000:50;
 
-  } else if(inChar == 'l') { runLIDAR = true;
+  } else if(inChar == 'l') { runLIDAR = true; bufferIndex = 0; zeroEncodersAbs();
   } else if(inChar == 'o') { runLIDAR = false;
 
   } else if(inChar == 'w') { lGoal = goal; rGoal = goal;
