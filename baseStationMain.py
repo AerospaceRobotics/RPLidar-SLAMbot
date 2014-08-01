@@ -27,8 +27,6 @@ from sys import version_info
 print("Python {}.{}.{}".format(*version_info[0:3]))
 pythonSeries = version_info[0]
 
-import numpy as np # for array processing and matplotlib display
-
 # used in Root class
 if pythonSeries == 2:
   import Tkinter as tk
@@ -49,6 +47,7 @@ from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.components import Laser
 
 # used in Data class
+import numpy as np # for array processing and matplotlib display
 from scipy.ndimage.interpolation import rotate
 # note that Data.saveImage() imports PIL and subprocess for map image saving and viewing
 
@@ -70,7 +69,7 @@ TALK_TO_XBEE = False
 USE_ODOMETRY = True
 INTERNAL_MAP = True
 LOG_ALL_DATA = False
-LOG_FILENAME = "data"
+LOGFILE_NAME = "data" # do not include .log extension here
 
 # Macros (here's me wishing this were C++...)
 def float2int(x):
@@ -129,7 +128,7 @@ LASER_OFFSET_MM = 35 # this value is negative what it should be # update() retur
 # BreezySLAM map constants
 MAP_SIZE_PIXELS = int(MAP_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the entire map
 MAP_QUALITY = 50
-HOLE_WIDTH_MM = 500
+HOLE_WIDTH_MM = 200
 RANDOM_SEED = 0xabcd
 
 # Map constants (derived)
@@ -152,11 +151,18 @@ DEG_2_TICK = REV_2_TICK/REV_2_DEG * ANGULAR_FLUX # [ticks/deg]
 TICK_2_DEG = REV_2_DEG/REV_2_TICK * 1.0/ANGULAR_FLUX # [deg/tick]
 
 class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
-  # init draws and displays window, creates data matrix, and calls updateData and updateMap
-  # updateData calls getScanData, and updates the slam object and data matrix with this data, and loops to itself
-  # updateMap draws a new map, using whatever data is available, and loops to itself
-  # getScanData pulls LIDAR data directly from the serial port and does preliminary processing
-  # resetAll recreates slam object to remove previous data it and wipes current data matrix
+  # init            creates all objects, calls initUI, and starts all loops (including serial thread)
+  # initUI          draws all elements in the GUI
+  # resetAll        restarts all objects that store map data, allowing history to be wiped without hard reset
+  # closeWin        first prompts the user if they really want to close, then ends serial thread and tkinter
+  # saveImage       tells data object to capture the current map and save as a png
+  # removeMarkers   deletes all temporary markers on the main map (old robot position)
+  # drawMarker      draws robot on main map using matplotlib marker
+  # getScanData     pulls LIDAR data directly from the serial port and does preliminary processing
+  # updateData      calls getScanData, and updates the slam object and data matrix with this data, and loops to itself
+  # updateMap       draws a new map, using whatever data is available, and loops to itself
+  # sendCommand     triggered by request to manually send the command in the text box
+  # autoSendCommand loop to control sending of commands, including automatic retries and continuous drive commands
 
   def __init__(self):
     tk.Tk.__init__(self) # explicitly initialize base class and create window
@@ -173,10 +179,16 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
     # Initialize root variables
     self.statusStr = tk.StringVar() # status of serThread
-    self.resetting = False
-    self.paused = False
+    self.resetting = False # are we in the process of soft restarting?
+    self.paused = False # should the loops be doing nothing right now?
     self.markers = [] # current matplotlib markers
     self.points = [] # current scan data
+    self.cmds = {'v':{'prop':"speed 0..255",  'func':lambda x: str(x)                 }, # send motor speed as given
+                 'w':{'prop':"forward mm",    'func':lambda x: str(int(MM_2_TICK*x))  }, # convert mm to ticks
+                 'a':{'prop':"left deg",      'func':lambda x: str(int(DEG_2_TICK*x)) }, # convert degrees to ticks
+                 's':{'prop':"reverse mm",    'func':lambda x: str(int(MM_2_TICK*x))  }, # convert mm to ticks
+                 'd':{'prop':"right deg",     'func':lambda x: str(int(DEG_2_TICK*x)) }} # convert degrees to ticks
+    self.sendingCommand = False # are we trying to manually send a command?
 
     # Initialize 
     self.data = Data() # handle map data
@@ -187,7 +199,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.serThread.start()
     self.updateData(init=True) # pull data from queue, put into data matrix
     self.updateMap(loop=True) # draw new data matrix
-    self.sendCommand(loop=True) # check for user input and automatically send it
+    self.autosendCommand() # check for user input and automatically send it
 
     # Bring UI to front
     self.lift() # bring tk window to front if initialization finishes
@@ -200,7 +212,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
     # plot color settings
     cmap = plt.get_cmap("binary") # opposite of "gray"
-    cmap.set_over("red") # robot is set to higher than MAP_DEPTH
+    cmap.set_over("red") # robot map value is set to higher than maximum map value
 
     # subplot 1 (stationary map)
     self.ax1 = plt.subplot(gs[0,:2]) # add plot 1 to figure
@@ -225,7 +237,6 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
     # turn figure data into matplotlib draggable canvas
     self.canvas = FigureCanvasTkAgg(self.fig, master=self) # tkinter interrupt function
-    # self.canvas.draw()
     self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1) # put figure at top of window
 
     # add matplotlib toolbar for easy navigation around map
@@ -234,16 +245,16 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
     # bind keyboard inputs to functions
     self.bind('<Escape>', lambda event: self.closeWin()) # tkinter interrupt function
-    self.bind('r', lambda event: self.restartAll()) # tkinter interrupt function
-    self.bind('<Return>', lambda event: self.sendCommand(loop=False)) # tkinter interrupt function
+    self.bind('<Shift-R>', lambda event: self.restartAll()) # tkinter interrupt function
+    self.bind('<Return>', lambda event: self.sendCommand()) # tkinter interrupt function
 
     # create buttons
     tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
-    tk.Button(self, text="Restart (r)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
+    tk.Button(self, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
     tk.Label(self, text="Command: ").pack(side="left")
     self.entryBox = tk.Entry(master=self, width=15)
     self.entryBox.pack(side="left", padx = 5)
-    tk.Button(self, text="Send (enter)", command=lambda: self.sendCommand(loop=False)).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+    tk.Button(self, text="Send (enter)", command=self.sendCommand).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
     monospaceFont = Font(family="Courier", weight='bold', size=12)
     tk.Label(self, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
     tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
@@ -349,47 +360,66 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       self.canvas.draw() # 200ms
     if loop and not self.resetting: self.after(MAP_RATE, self.updateMap) # tkinter interrupt function
 
-  def sendCommand(self, loop=True, resendCount=0): # loop indicates how function is called: auto (True) or manual (False)
-    # first, figure out which string to send # note that ACK-checking only applies to value-setting commands in 'vwasd'
+  def sendCommand(self):
+    self.sendingCommand = True
 
-    # expecting ACK, but not received yet, and not resent MAX_TX_TRIES times
-    if self.serThread.cmdSent and not self.serThread.cmdRcvd and resendCount < MAX_TX_TRIES:
-      resend = True
-      strIn = self.serThread.sentCmd # get previous command
+  def autosendCommand(self, numTries=0, wantACK=False, strIn='', strOut=''):
+    # note that ACK-checking only applies to value-setting commands in 'vwasd'
 
-    else: # not resending last command
-      # ACK received, or command resent too many times (failed)
-      if (self.serThread.cmdSent and self.serThread.cmdRcvd) or resendCount >= MAX_TX_TRIES:
-        self.serThread.cmdSent = False # reset state values
-        self.serThread.cmdRcvd = False
-        resendCount = 0
-        self.entryBox.delete(0,"end") # clear box after manual-send
-      resend = False
+    # expecting ACK from Arduino
+    if wantACK:
+      gotACK = self.serThread.getACK() # has the serial thread received an ACK?
+
+      # either ACK received or command resent too many times
+      if gotACK or numTries >= MAX_TX_TRIES:
+        numTries, wantACK = 0, False # reset stuff
+        self.entryBox.delete(0,"end") # clear box if we're done sending command
+        self.serThread.resetACK() # tell serial thread that we got the ACK
+
+      # no ACK received and not resent too many times
+      else:
+        numTries += 1 # keep track of how many times we're resending command
+        self.TXQueue.put(strOut) # send last command
+        self.entryBox.delete(0,"end")
+        self.entryBox.insert(0,"try {0}: {1}".format(numTries, strIn)) # tell box what we're doing
+
+    # there's a new command to send (that isn't empty)
+    elif self.entryBox.get(): # string in box isn't empty
       strIn = self.entryBox.get() # get new command
 
-    # then, send it in the proper manner corresponding to the command
-    if strIn: # string is not empty
-      if not loop: # manual-send mode of function
-        self.TXQueue.put(strIn)
-        self.entryBox.delete(0,"end") # clear box after manual-send
-        self.entryBox.insert(0,"try {0}: {1}".format(resendCount, strIn)) # clear box after manual-send
+      # auto-send continuous drive commands (capitalized normal commands)
+      if strIn in 'WASD':
+        self.TXQueue.put(strIn[0])
 
-      elif strIn in 'WASD': # auto-send continuous drive commands (capitalized normal commands)
-        self.TXQueue.put(strIn)
-
-      elif resend: # auto-resend command until ACK received
-        resendCount += 1 # keep track of how many times we're resending command
-        self.TXQueue.put(strIn)
+      # manual-send
+      if self.sendingCommand:
+        command = strIn[0]
+        if command in 'vwasd': # we're giving the robot a value for a command
+          try:
+            num = int(strIn[1:])
+          except ValueError:
+            self.entryBox.delete(1,"end")
+            self.entryBox.insert(1,"[{}]".format(self.cmds[command]['prop'])) # prompt user with proper command format
+            self.entryBox.selection_range(1,'end')
+          else:
+            wantACK = True # start resending the command if it isn't received
+            strOut = command + self.cmds[command]['func'](num) # re-create command with converted values
+            self.TXQueue.put(strOut)
+        else: # otherwise send only first character
+          self.TXQueue.put(command)
 
       else:
         pass # wait until manual-send for other commands
-
-    if loop and not self.resetting: self.after(CMD_RATE, lambda: self.sendCommand(resendCount=resendCount)) # tkinter interrupt function
+    
+    self.sendingCommand = False # reset manual sending
+    self.after(CMD_RATE, lambda: self.autosendCommand(numTries=numTries, wantACK=wantACK, strIn=strIn, strOut=strOut)) # tkinter interrupt function
 
 
 class Slam(RMHC_SLAM):
-  # updateSlam takes LIDAR data and uses BreezySLAM to calculate the robot's new position
-  # getVelocities takes the encoder data (lWheel, rWheel, timeStamp) and finds change in translational and angular position and in time
+  # init          creates the BreezySLAM objects needed for mapping
+  # getBreezyMap  returns BreezySLAM's current internal map
+  # updateSlam    takes LIDAR data and uses BreezySLAM to calculate the robot's new position
+  # getVelocities uses encoder data to return robot position deltas (forward, angular, and time)
 
   def __init__(self):
     laser = Laser(SCAN_SIZE, \
@@ -454,12 +484,17 @@ class Slam(RMHC_SLAM):
 
 
 class Data():
-  # init creates data matrix and information vectors for processing
-  # getRobotPos populates robot position information needed by other methods of Data
-  # drawMap adds scan data to data matrix
-  # drawInset adds scan data to inset matrix
-  # drawRobot adds robot position to data matrix, generally using slam to find this position
-  # saveImage uses PIL to write an image file from the data matrix
+  # init            creates data matrix and information vectors for processing
+  # getMapMatrix    returns the map matrix
+  # getInsetMatrix  returns the inset map matrix
+  # get_robot_rel   returns the robot's position in mm relative to where is started
+  # getRobotPos     populates robot position information needed by other methods of Data
+  # drawBreezyMap   adds the BreezySLAM internal map to the map matrix
+  # drawMap         adds scan data to map matrix
+  # drawInset       adds scan data to inset matrix
+  # drawRobot       adds robot position to data matrix, in the form of an arrow of red pixels
+  # drawPath        draws portion of the robot's trajectory in the form of red dots on the desired object
+  # saveImage       uses PIL to write an image file from the data matrix
 
   def __init__(self):    
     self.mapMatrix = np.zeros((MAP_SIZE_PIXELS, MAP_SIZE_PIXELS), dtype=np.uint8) # initialize data matrix
@@ -558,14 +593,23 @@ class Data():
 
 
 class SerialThread(threading.Thread):
+  # init defines objects and prompts user for port information if necessary
+  # connectToPort attempts to establish serial port connection
+  # talkToXBee allows direct communication with the XBee if optional flag is set
+  # waitForResponse attempts to establish contact with the Arduino
+  # stop ends serial communication with the Arduino
+  # writeCmd sends data to the Arduino
+  # getACK returns whether we have received an ACK from the Arduino
+  # resetACK resets boolean indicating that Arduino has received a command
+  # run is the main loop, which handles all serial communication
+
   def __init__(self, statusQueue, RXQueue, TXQueue):
     super(SerialThread, self).__init__() # nicer way to initialize base class (only works with new-style classes)
     self.statusQueue = statusQueue
     self.RXQueue = RXQueue
     self.TXQueue = TXQueue
     self._stop = threading.Event() # create flag
-    self.cmdSent = False
-    self.cmdRcvd = False
+    self.gotACK = False
 
     self.connectToPort() # initialize serial connection with XBee
     if TALK_TO_XBEE: self.talkToXBee() # optional (see function)
@@ -625,7 +669,7 @@ class SerialThread(threading.Thread):
     print("Data received... live data processing commencing...")
     print("Each pixel is " + str(round(1000.0/MAP_RES_PIX_PER_M,1)) + "mm, or " + str(round(1000.0/MAP_RES_PIX_PER_M/25.4,2)) + "in.")
 
-  def stop(self, try1 = True):
+  def stop(self, try1=True):
     if try1:
       self._stop.set() # set stop flag to True
       sleep(0.2) # give serial reading loop time to finish current point before flushInput()
@@ -635,25 +679,14 @@ class SerialThread(threading.Thread):
     sleep(0.5) # give time to see if data is still coming in
     if self.ser.inWaiting(): self.stop(try1=False)
 
-  def writeCmd(self, outByte):
-    command = outByte[0]
-    if command in 'vwasd': # we're giving the robot a value for a command
-      self.ser.write(command) # send the command
-      try:
-        num = float(outByte[1:])
-      except IndexError:
-        if command == 'v': print("Invalid command. Enter speed for speed set command.")
-        else: print("Invalid command. Enter distance/angle for movement commands.")
-      except ValueError:
-        print("Invalid command. Enter a number after command.")
-      else:
-        self.cmdSent = True
-        self.sentCmd = outByte
-        if command == 'v': self.ser.write(str(num)) # send motor speed as given
-        elif command in 'ws': self.ser.write(str(int(MM_2_TICK*num))) # convert millimeters to ticks
-        elif command in 'ad': self.ser.write(str(int(DEG_2_TICK*num))) # convert degrees to ticks
-    else:
-      self.ser.write(command) # otherwise send only first character
+  def writeCmd(self, outBytes):
+    self.ser.write(outBytes)
+
+  def getACK(self):
+    return self.gotACK
+
+  def resetACK(self):
+    self.gotACK = False
 
   def run(self):
     tstart = time()
@@ -686,7 +719,7 @@ class SerialThread(threading.Thread):
 
       # check for command ACK
       if pointLine == ENC_FLAG*PKT_SIZE:
-        self.cmdRcvd = True # ACK from Arduino
+        self.gotACK = True # ACK from Arduino
         continue # move to the next point
 
       # check for encoder data packet
@@ -711,7 +744,7 @@ class SerialThread(threading.Thread):
 
 
 if __name__ == '__main__':
-  if LOG_ALL_DATA: dataFile = open(LOG_FILENAME+'.log','w')
+  if LOG_ALL_DATA: dataFile = open(LOGFILE_NAME+'.log','w')
   root = Root() # create Tkinter window, containing entire App
   root.mainloop() # start Tkinter loop
   if LOG_ALL_DATA: dataFile.close()
