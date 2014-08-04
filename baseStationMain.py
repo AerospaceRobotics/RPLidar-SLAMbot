@@ -18,14 +18,81 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 GPL = "breezySLAM_XBEE.py Copyright (C) 2014 Michael Searing \n\
-This program comes with ABSOLUTELY NO WARRANTY; for details type [tbd]. \n\
+This program comes with ABSOLUTELY NO WARRANTY. \n\
 This is free software, and you are welcome to redistribute it \n\
-under certain conditions; type [tbd] for details."
+under certain conditions; please cite the source."
 print(GPL)
 
 from sys import version_info
 print("Python {}.{}.{}".format(*version_info[0:3]))
 pythonSeries = version_info[0]
+
+
+# User preferences
+TALK_TO_XBEE = False
+USE_ODOMETRY = True
+INTERNAL_MAP = True
+LOG_ALL_DATA = True
+LOGFILE_NAME = "test" # do not include .log extension here
+
+# Laser constants (shared with Arduino)
+DIST_MIN = 100; # minimum distance
+DIST_MAX = 6000; # maximum distance
+ANG_MIN = 0; # minimum scan angle
+ANG_MAX = 360; # maximum scan angle
+
+# Map constants
+MAP_SIZE_M = 16.0 # size of region to be mapped [m]
+INSET_SIZE_M = 2.0 # size of relative map
+MAP_RES_PIX_PER_M = 100 # number of pixels of data per meter [pix/m]
+
+# Robot constants
+REV_2_TICK = 1000.0/3 # encoder ticks per wheel revolution
+WHEEL_DIAMETER = 58.2
+WHEEL_BASE = 177.0 # length of treads [mm]
+WHEEL_TRACK = 190.0 # separation of treads [mm]
+
+# Robot constants (derived)
+from numpy import pi as PI
+REV_2_MM = PI*WHEEL_DIAMETER # circumference [mm]
+MM_2_TICK = REV_2_TICK/REV_2_MM # [ticks/mm]
+TICK_2_MM = REV_2_MM/REV_2_TICK # [mm/tick]
+TREAD_ERROR = 0.90 # continuous tread slips this much relative to slip of wheels (experimental)
+ANGULAR_FLUX = TREAD_ERROR*((WHEEL_BASE/WHEEL_TRACK)**2+1); # tread slippage [] # our math assumed wheels, hence TREAD_ERROR
+ROT_2_MM = PI*WHEEL_TRACK # circumference of wheel turning circle [mm]
+ROT_2_DEG = 360.0 # [deg]
+REV_2_DEG = ROT_2_DEG*(REV_2_MM/ROT_2_MM) # degrees of rotation per wheel revolution [deg]
+DEG_2_TICK = REV_2_TICK/REV_2_DEG * ANGULAR_FLUX # [ticks/deg]
+TICK_2_DEG = REV_2_DEG/REV_2_TICK * 1.0/ANGULAR_FLUX # [deg/tick]
+
+
+def main():
+  # app window setup
+  root = tk.Tk() # create tkinter window
+  root.wm_title("Aerospace Robotics LIDAR Viewer") # name window
+  root.geometry('+100+100') # position windows 100,100 pixels from top-left corner
+  root.lower() # bring terminal to front
+
+  # helper object setup
+  data = Data()
+  slam = Slam()
+  queues = [Queue(), Queue(), Queue()]
+  serThread = SerialThread(*queues)
+
+  # create main app
+  app = App(root, data, slam, queues, serThread)
+
+  # Start loops
+  app.serThread.start() # begin fetching data from serial port and processing it
+  app.updateData() # pull data from queue, put into data matrix
+  app.updateMap() # draw new data matrix
+  app.autosendCommand() # check for user input and automatically send it
+
+  # Bring GUI to front # app.master = root
+  app.master.lift() # bring tk window to front if initialization finishes
+  app.master.focus_force() # make tk window active one (so you don't need to click on it for hotkeys to work)
+  app.master.mainloop() # start Tkinter GUI loop
+
 
 # used in Root class
 if pythonSeries == 2:
@@ -41,15 +108,47 @@ elif pythonSeries == 3:
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from matplotlib.gridspec import GridSpec
+paddedStr = lambda inStr, length: '{0: <{width}s}'.format(inStr, width=length)[0:length]
+# GUI constants
+CMD_RATE = 100 # minimum time between auto-send commands [ms]
+DATA_RATE = 50 # minimum time between updating data from lidar [ms]
+MAP_RATE = 500 # minimum time between updating map [ms]
+MAX_TX_TRIES = 3 # max number of times to try to resend command before giving up
+VIEW_SIZE_M = 8.0 # default size of region to be shown in display [m]
+# Protocol constants
+NUM_SAMP = 370 # number of serial packets needed for 1 scan (guesstimate)
+
 
 # used in Slam class
 from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.components import Laser
+# Laser constants
+SCAN_SIZE = 360 # number of points per scan
+SCAN_RATE_HZ = 1980.0/360 # 1980points/sec * scan/360points [scans/sec]
+SCAN_DETECTION_ANGLE = ANG_MAX
+SCAN_DISTANCE_NO_DETECTION_MM = DIST_MAX
+SCAN_DETECTION_MARGIN = 0
+LASER_OFFSET_MM = 35 # this value is negative what it should be # update() returns LIDAR unit position
+# BreezySLAM map constants
+MAP_SIZE_PIXELS = int(MAP_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the entire map
+# MAP_SIZE_M = MAP_SIZE_M
+MAP_QUALITY = 50
+HOLE_WIDTH_MM = 200
+RANDOM_SEED = 0xabcd
 
-# used in Data class
+
+# used in Data class # note that Data.saveImage() imports PIL and subprocess for map image saving and viewing
 import numpy as np # for array processing and matplotlib display
 from scipy.ndimage.interpolation import rotate
-# note that Data.saveImage() imports PIL and subprocess for map image saving and viewing
+float2int = lambda x: int(0.5 + x)
+# Map constants (derived)
+INSET_SIZE_PIX = int(INSET_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the inset map
+MAP_CENTER_PIX = int(MAP_SIZE_PIXELS/2) # indices of map center []
+MM_2_PIX = MAP_RES_PIX_PER_M/1000.0 # [pix/mm]
+DEG_2_RAD = np.pi/180.0
+MAP_DEPTH = 5 # depth of data points on map (levels of certainty)
+ROBOT_DEPTH = MAP_DEPTH + 1 # value of robot in map storage
+
 
 # used in SerialThread class
 if pythonSeries == 2: from Queue import Empty as QueueEmpty
@@ -63,21 +162,10 @@ from time import time, sleep
 from struct import unpack # parse incoming serial data
 from math import copysign
 if pythonSeries == 3: raw_input = lambda inStr: input(inStr)
-
-# User preferences
-TALK_TO_XBEE = False
-USE_ODOMETRY = True
-INTERNAL_MAP = True
-LOG_ALL_DATA = False
-LOGFILE_NAME = "data" # do not include .log extension here
-
-# Macros (here's me wishing this were C++...)
-def float2int(x):
-  return int(0.5 + x)
-
-def paddedStr(inStr, length): # pad with spaces or trim string to desired length
-  return '{0: <{width}s}'.format(inStr, width=length)[0:length]
-
+bits2mask = lambda bitList: sum([2**el for el in bitList])
+# Patience constants
+SER_READ_TIMEOUT = 1 # time to wait for data from Arduino before connection considered lost [s]
+MAX_RX_TRIES = 8 # max number of times to try to tell LIDAR to start before giving up # 1s/try
 # Packet constants (shared with Arduino)
 ENC_FLAG = '\xFE' # encoder data flag (&thorn)
 SCN_FLAG = '\xFF' # scan data flag (&yuml)
@@ -86,71 +174,10 @@ PKT_SIZE = 4 # length of scan data packet [bytes]
 ENC_SIZE = 8 # length of encoder data packet [bytes]
 DFAC = 0.5; # distance resolution factor [1/mm]
 AFAC = 8.0; # angle resolution factor [1/deg]
-XBEE_BAUD = 125000 # maximum baud rate allowed by Arduino and XBee [hz] # 250k=0x3D090, 125k=0x1E848, 111111=7
-DIST_MIN = 100; # minimum distance
-DIST_MAX = 6000; # maximum distance
-ANG_MIN = 0; # minimum scan angle
-ANG_MAX = 360; # maximum scan angle
+XBEE_BAUD = 125000 # maximum baud rate allowed by Arduino and XBee [hz] # 250k=0x3D090, 125k=0x1E848
 
-# Protocol constants
-MASK = 0b0000111111111111 # bits 0 .. 11
-NUM_SAMP = 360 # number of serial packets needed for 1 scan (guesstimate)
 
-# Map constants
-MAP_SIZE_M = 20.0 # size of region to be mapped [m]
-VIEW_SIZE_M = 6.0 # default size of region to be shown in display [m]
-INSET_SIZE_M = 3.0 # size of relative map
-MAP_RES_PIX_PER_M = 100 # number of pixels of data per meter [pix/m]
-MAP_DEPTH = 5 # depth of data points on map (levels of certainty)
-
-# GUI constants
-CMD_RATE = 100 # minimum time between auto-send commands [ms]
-DATA_RATE = 50 # minimum time between updating data from lidar [ms]
-MAP_RATE = 500 # minimum time between updating map [ms]
-MAX_RX_TRIES = 8 # max number of times to try to tell LIDAR to start before giving up
-MAX_TX_TRIES = 6 # max number of times to try to resend command before giving up
-SER_READ_TIMEOUT = 1 # time to wait for data from Arduino before connection considered lost [s]
-
-# Robot constants
-REV_2_TICK = 1000.0/3 # encoder ticks per wheel revolution
-WHEEL_DIAMETER = 58.2
-WHEEL_BASE = 177.0 # length of treads [mm]
-WHEEL_TRACK = 190.0 # separation of treads [mm]
-
-# Laser constants
-SCAN_SIZE = 360 # number of points per scan
-SCAN_RATE_HZ = 1980.0/360 # 1980points/sec * scan/360points [scans/sec]
-SCAN_DETECTION_ANGLE = ANG_MAX
-SCAN_DISTANCE_NO_DETECTION_MM = DIST_MAX
-SCAN_DETECTION_MARGIN = 0
-LASER_OFFSET_MM = 35 # this value is negative what it should be # update() returns LIDAR unit position
-
-# BreezySLAM map constants
-MAP_SIZE_PIXELS = int(MAP_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the entire map
-MAP_QUALITY = 50
-HOLE_WIDTH_MM = 200
-RANDOM_SEED = 0xabcd
-
-# Map constants (derived)
-INSET_SIZE_PIX = int(INSET_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the inset map
-MAP_CENTER_PIX = int(MAP_SIZE_PIXELS/2) # indices of map center []
-MM_2_PIX = MAP_RES_PIX_PER_M/1000.0 # [pix/mm]
-DEG_2_RAD = np.pi/180.0
-ROBOT_DEPTH = MAP_DEPTH + 1 # value of robot in map storage
-
-# Robot constants (derived)
-REV_2_MM = np.pi*WHEEL_DIAMETER # circumference [mm]
-MM_2_TICK = REV_2_TICK/REV_2_MM # [ticks/mm]
-TICK_2_MM = REV_2_MM/REV_2_TICK # [mm/tick]
-TREAD_ERROR = 0.90 # continuous tread slips this much relative to slip of wheels (experimental)
-ANGULAR_FLUX = TREAD_ERROR*((WHEEL_BASE/WHEEL_TRACK)**2+1); # tread slippage [] # our math assumed wheels, hence TREAD_ERROR
-ROT_2_MM = np.pi*WHEEL_TRACK # circumference of wheel turning circle [mm]
-ROT_2_DEG = 360.0 # [deg]
-REV_2_DEG = ROT_2_DEG*(REV_2_MM/ROT_2_MM) # degrees of rotation per wheel revolution [deg]
-DEG_2_TICK = REV_2_TICK/REV_2_DEG * ANGULAR_FLUX # [ticks/deg]
-TICK_2_DEG = REV_2_DEG/REV_2_TICK * 1.0/ANGULAR_FLUX # [deg/tick]
-
-class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
+class App:
   # init            creates all objects, calls initUI, and starts all loops (including serial thread)
   # initUI          draws all elements in the GUI
   # resetAll        restarts all objects that store map data, allowing history to be wiped without hard reset
@@ -164,18 +191,15 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
   # sendCommand     triggered by request to manually send the command in the text box
   # autoSendCommand loop to control sending of commands, including automatic retries and continuous drive commands
 
-  def __init__(self):
-    tk.Tk.__init__(self) # explicitly initialize base class and create window
-    self.protocol("WM_DELETE_WINDOW", self.closeWin) # control what happens when a window is closed externally (e.g. by the 'x')
-    self.geometry('+100+100') # position windows 100,100 pixels from top-left corner
-    self.wm_title("Aerospace Robotics LIDAR Viewer") # name window
-    self.lower() # bring terminal to front
+  def __init__(self, master, data, slam, queues, serThread):
+    self.master = master # root tk window
+    self.master.protocol("WM_DELETE_WINDOW", self.closeWin) # control what happens when a window is closed externally (e.g. by the 'x')
 
     # Initialize serial object, prompting user for input if required
-    self.statusQueue = Queue() # status of serial thread # FIFO queue by default
-    self.RXQueue = Queue() # data from serial to root # FIFO queue by default
-    self.TXQueue = Queue() # data from root to serial # FIFO queue by default
-    self.serThread = SerialThread(self.statusQueue, self.RXQueue, self.TXQueue) # initialize thread object, getting user input if required
+    self.statusQueue = queues[0] # status of serial thread # FIFO queue by default
+    self.RXQueue = queues[1] # data from serial to root # FIFO queue by default
+    self.TXQueue = queues[2] # data from root to serial # FIFO queue by default
+    self.serThread = serThread # initialize thread object, getting user input if required
 
     # Initialize root variables
     self.statusStr = tk.StringVar() # status of serThread
@@ -191,21 +215,11 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.sendingCommand = False # are we trying to manually send a command?
 
     # Initialize 
-    self.data = Data() # handle map data
-    self.slam = Slam() # do slam processing
+    self.data = data # handle map data
+    self.slam = slam # do slam processing
     self.initUI() # create all the pretty stuff in the Tkinter window
 
-    # Start loops
-    self.serThread.start()
-    self.updateData(init=True) # pull data from queue, put into data matrix
-    self.updateMap(loop=True) # draw new data matrix
-    self.autosendCommand() # check for user input and automatically send it
-
-    # Bring UI to front
-    self.lift() # bring tk window to front if initialization finishes
-    self.focus_force() # make tk window active one (so you don't need to click on it for hotkeys to work)
-
-  def initUI(self):
+  def initUI(self, io=True):
     # current (and only) figure
     self.fig = plt.figure(figsize=(9, 5), dpi=131.2) # create matplotlib figure (dpi calculated from $ xrandr)
     gs = GridSpec(1,3) # layout of plots in figure
@@ -236,41 +250,42 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     self.drawMarker(self.ax2, (0,0,0), temporary=False) # draw permanent robot at center of inset map
 
     # turn figure data into matplotlib draggable canvas
-    self.canvas = FigureCanvasTkAgg(self.fig, master=self) # tkinter interrupt function
+    self.canvas = FigureCanvasTkAgg(self.fig, master=self.master) # tkinter interrupt function
     self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1) # put figure at top of window
 
     # add matplotlib toolbar for easy navigation around map
-    NavigationToolbar2TkAgg(self.canvas, self).update() # tkinter interrupt function
+    NavigationToolbar2TkAgg(self.canvas, self.master).update() # tkinter interrupt function
     self.canvas._tkcanvas.pack(side="top", fill=tk.BOTH, expand=1) # actually goes on bottom...not sure why
 
     # bind keyboard inputs to functions
-    self.bind('<Escape>', lambda event: self.closeWin()) # tkinter interrupt function
-    self.bind('<Shift-R>', lambda event: self.restartAll()) # tkinter interrupt function
-    self.bind('<Return>', lambda event: self.sendCommand()) # tkinter interrupt function
+    self.master.bind('<Escape>', lambda event: self.closeWin()) # tkinter interrupt function
+    self.master.bind('<Shift-R>', lambda event: self.restartAll()) # tkinter interrupt function
+    self.master.bind('<Return>', lambda event: self.sendCommand()) # tkinter interrupt function
 
     # create buttons
-    tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
-    tk.Button(self, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
-    tk.Label(self, text="Command: ").pack(side="left")
-    self.entryBox = tk.Entry(master=self, width=15)
-    self.entryBox.pack(side="left", padx = 5)
-    tk.Button(self, text="Send (enter)", command=self.sendCommand).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+    tk.Button(self.master, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
+    tk.Button(self.master, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
+    if io:
+      tk.Label(self.master, text="Command: ").pack(side="left")
+      self.entryBox = tk.Entry(master=self.master, width=15)
+      self.entryBox.pack(side="left", padx = 5)
+      tk.Button(self.master, text="Send (enter)", command=self.sendCommand).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
     monospaceFont = Font(family="Courier", weight='bold', size=12)
-    tk.Label(self, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
-    tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+    tk.Label(self.master, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
+    tk.Button(self.master, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
 
   def restartAll(self, funcStep=0): # two-part initialization to be re-done at soft reset
     if funcStep == 0:
       self.resetting = True # stop currently running loops
-      self.after(2000, lambda: self.restartAll(funcStep=1)) # release processor to let it wrap things up elsewhere
+      self.master.after(2000, lambda: self.restartAll(funcStep=1)) # let processor wrap things up elsewhere # should be smarter
       return
 
     elif funcStep == 1:
       self.resetting = False
       self.data = Data()
       self.slam = Slam()
-      self.updateData(init=True) # pull data from queue, put into data matrix
-      self.updateMap(loop=True) # draw new data matrix
+      self.updateData() # pull data from queue, put into data matrix
+      self.updateMap() # draw new data matrix
 
   def closeWin(self):
     self.paused = True
@@ -280,7 +295,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
       print("Shutting down LIDAR")
       self.serThread.stop() # tell serial thread to stop running
       print("Closing program")
-      self.quit() # kills interpreter (necessary for some reason)
+      self.master.quit() # kills interpreter (necessary for some reason)
     else:
       self.paused = False
 
@@ -298,7 +313,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
     marker = ax.plot(pos[0]/1000, pos[1]/1000, markersize=8, color='red', marker=(3,1,-pos[2]), markeredgewidth=0, aa=False)
     if temporary: self.markers.extend(marker) # marker is a list of matplotlib.line.Line2D objects
 
-  def getScanData(self):
+  def getScanData(self, repeat=False):
     self.points = [] # wipe old data before writing new data
     while True:
       # Make sure there's actually data to get
@@ -316,7 +331,9 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
         else:
           print("RXQueue broken (something weird happened...)")
 
-  def updateData(self, init=False):
+    if repeat: self.getScanData()
+
+  def updateData(self, init=True):
     self.dataInit = init
     if not self.paused:
       try: # do this before anything else
@@ -327,9 +344,10 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
         length = len(self.statusStr.get())
         self.statusStr.set(paddedStr(status, length) if length != 0 else status)
 
-      if self.RXQueue.qsize() > NUM_SAMP: # ready to pull new scan data
+      if self.RXQueue.qsize() > (2 if init else 1)*NUM_SAMP: # ready to pull new scan data
         # pull data from serial thread via RXQueue
-        self.getScanData() # 2ms
+        # ignore first scan (we're assuming it's not a complete scan, so not reliable)
+        self.getScanData(repeat=init) # 2ms
 
         # update robot position
         if init: self.slam.prevEncPos = self.slam.currEncPos # set both values the first time through
@@ -337,7 +355,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
         if init: init = False # initial data gathered successfully
 
-    if not self.resetting: self.after(DATA_RATE, lambda: self.updateData(init=init)) # tkinter interrupt function
+    if not self.resetting: self.master.after(DATA_RATE, lambda: self.updateData(init=init))
     else: self.statusStr.set(paddedStr("Restarting", len(self.statusStr.get()))) # if loop ends, we're restarting
 
   def updateMap(self, loop=True):
@@ -358,7 +376,7 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
 
       # refresh the figure
       self.canvas.draw() # 200ms
-    if loop and not self.resetting: self.after(MAP_RATE, self.updateMap) # tkinter interrupt function
+    if loop and not self.resetting: self.master.after(MAP_RATE, self.updateMap)
 
   def sendCommand(self):
     self.sendingCommand = True
@@ -392,9 +410,9 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
         self.TXQueue.put(strIn[0])
 
       # manual-send
-      if self.sendingCommand:
+      elif self.sendingCommand:
         command = strIn[0]
-        if command in 'vwasd': # we're giving the robot a value for a command
+        if command in list(self.cmds): # we're giving the robot a value for a command
           try:
             num = int(strIn[1:])
           except ValueError:
@@ -407,12 +425,13 @@ class Root(tk.Tk): # Tkinter window, inheriting from Tkinter module
             self.TXQueue.put(strOut)
         else: # otherwise send only first character
           self.TXQueue.put(command)
+          self.entryBox.delete(0,"end") # clear box
 
       else:
         pass # wait until manual-send for other commands
     
     self.sendingCommand = False # reset manual sending
-    self.after(CMD_RATE, lambda: self.autosendCommand(numTries=numTries, wantACK=wantACK, strIn=strIn, strOut=strOut)) # tkinter interrupt function
+    self.master.after(CMD_RATE, lambda: self.autosendCommand(numTries=numTries, wantACK=wantACK, strIn=strIn, strOut=strOut))
 
 
 class Slam(RMHC_SLAM):
@@ -431,7 +450,7 @@ class Slam(RMHC_SLAM):
     RMHC_SLAM.__init__(self, \
                        laser, \
                        MAP_SIZE_PIXELS, \
-                       int(MAP_SIZE_M), \
+                       MAP_SIZE_M, \
                        MAP_QUALITY, \
                        HOLE_WIDTH_MM, \
                        RANDOM_SEED)
@@ -483,7 +502,7 @@ class Slam(RMHC_SLAM):
     return dxy, dtheta, dt/1000.0 # [mm], [deg], [s]
 
 
-class Data():
+class Data:
   # init            creates data matrix and information vectors for processing
   # getMapMatrix    returns the map matrix
   # getInsetMatrix  returns the inset map matrix
@@ -496,7 +515,8 @@ class Data():
   # drawPath        draws portion of the robot's trajectory in the form of red dots on the desired object
   # saveImage       uses PIL to write an image file from the data matrix
 
-  def __init__(self):    
+  def __init__(self):
+    print("Each pixel is " + str(round(1000.0/MAP_RES_PIX_PER_M,1)) + "mm, or " + str(round(1000.0/MAP_RES_PIX_PER_M/25.4,2)) + "in.")
     self.mapMatrix = np.zeros((MAP_SIZE_PIXELS, MAP_SIZE_PIXELS), dtype=np.uint8) # initialize data matrix
     self.insetMatrix = np.zeros((INSET_SIZE_PIX, INSET_SIZE_PIX), dtype=np.uint8) # initialize inset matrix
     self.trajectory = [] # robot location history, in pixels
@@ -569,14 +589,14 @@ class Data():
 
   def drawPath(self, mapObject, inSlice):
     for x, y, theta in self.trajectory[inSlice]:
-      self.mapMatrix[y,x] = ROBOT_DEPTH
+      mapObject[y,x] = ROBOT_DEPTH
 
   def saveImage(self):
     from PIL import Image # don't have PIL? sorry (try pypng)
 
     imgData = np.array(self.mapMatrix) # copy map data
     self.drawRobot(imgData, self.robot_pix)
-    self.drawPath(imgData, slice(None,None,None)) # draw all values # same as ":"
+    self.drawPath(imgData, slice(None,-1,None)) # draw all values except last one # same as ":-1"
     robot = imgData > MAP_DEPTH # save location of robot
     imgData = MAP_DEPTH - imgData # invert colors to make 0 black and MAP_DEPTH white
     GB = np.where(robot, 0, 255.0/MAP_DEPTH*imgData).astype(np.uint8) # scale map data and assign to red, green, and blue layers
@@ -667,7 +687,6 @@ class SerialThread(threading.Thread):
       if tryCount >= MAX_RX_TRIES: sys.exit("No response received from Arduino.") # only try for MAX_RX_TRIES seconds before giving up
 
     print("Data received... live data processing commencing...")
-    print("Each pixel is " + str(round(1000.0/MAP_RES_PIX_PER_M,1)) + "mm, or " + str(round(1000.0/MAP_RES_PIX_PER_M/25.4,2)) + "in.")
 
   def stop(self, try1=True):
     if try1:
@@ -689,6 +708,9 @@ class SerialThread(threading.Thread):
     self.gotACK = False
 
   def run(self):
+    MASK1 = bits2mask(range(0,4)) # 0b00001111
+    MASK2 = bits2mask(range(4,8)) # 0b11110000
+
     tstart = time()
     lagged, missed, total, scans = 0,0,0,0
     while not self._stop.isSet(): # pulls and processes all incoming and outgoing serial data
@@ -704,8 +726,7 @@ class SerialThread(threading.Thread):
         self.ser.flushInput()
 
       # pull serial data from computer buffer (XBee)
-      # in order sent (bytes comma-separated):                  dist[0:7], dist[8:12] ang[0:3], ang[4:12]
-      # in order received (future data chunks comma-separated): dist[0:12]            ang[0:3], ang[4:12]
+      # in order sent (bytes comma-separated):  dist[0:7], dist[8:12] ang[0:3], ang[4:12]
       pointLine = self.ser.read(PKT_SIZE) # distance and angle (blocking)
       if len(pointLine) < PKT_SIZE: # timeout occurs
         self.statusQueue.put("ser.read() timeout. Send 'l' iff LIDAR stopped.")
@@ -725,15 +746,15 @@ class SerialThread(threading.Thread):
       # check for encoder data packet
       if pointLine[0:2] == ENC_FLAG*2:
         pointLine += self.ser.read(ENC_SIZE-PKT_SIZE) # read more bytes to complete longer packet
-        self.RXQueue.put(unpack('<hhH',pointLine[2:])) # little-endian 2 signed shorts, 1 unsigned short
+        self.RXQueue.put(unpack('<2hH',pointLine[2:])) # little-endian 2 signed shorts, 1 unsigned short
         scans += 1
         continue # move to the next point
 
       # check for lidar data packet
       if pointLine[-1] == SCN_FLAG:
-        bytes12, byte3 = unpack('<HB',pointLine[0:-1]) # little-endian 2 bytes and 1 byte
-        distCurr = (bytes12 & MASK)/DFAC # 12 least-significant (sent first) bytes12 bits
-        angleCurr = ((bytes12 & ~MASK) >> 12 | byte3 << 4)/AFAC # 4 most-significant (sent last) bytes2 bits, 8 byte1 bits
+        byte1, byte2, byte3 = unpack('<3B',pointLine[0:-1]) # little-endian 3 bytes
+        distCurr = (byte1 | (byte2 & MASK1) << 8)/DFAC # 12 least-significant (sent first) bytes12 bits
+        angleCurr = (byte3 << 4 | (byte2 & MASK2) >> 4)/AFAC # 4 most-significant (sent last) bytes2 bits, 8 byte1 bits
         if DIST_MIN < distCurr < DIST_MAX and angleCurr <= ANG_MAX: # data matches what was transmitted
           self.RXQueue.put((distCurr, angleCurr))
           total += 1
@@ -745,6 +766,5 @@ class SerialThread(threading.Thread):
 
 if __name__ == '__main__':
   if LOG_ALL_DATA: dataFile = open(LOGFILE_NAME+'.log','w')
-  root = Root() # create Tkinter window, containing entire App
-  root.mainloop() # start Tkinter loop
+  main()
   if LOG_ALL_DATA: dataFile.close()
