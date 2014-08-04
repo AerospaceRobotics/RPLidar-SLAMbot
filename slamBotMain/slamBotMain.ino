@@ -96,8 +96,8 @@ bool phaseMotorDriving = true; // True: Phase-Enable; False: In-In (for motor dr
 // Control value initialization
 unsigned char motorspeed = 237; // approx motor speed for 360 readings per revolution
 int straightness = 1; // 'P' constant for drive correction
-int turnDist = 150; // encoder ticks for each wheel when turning (~30deg)
-int straightDist = 400; // encoder ticks for each wheel when going straight (~0.2m)
+int turnDist = 250; // encoder ticks for each wheel when turning (~45deg)
+int straightDist = 500; // encoder ticks for each wheel when going straight (~0.3m)
 int AMPLITUDE = 159;
 int lGoal = 0;
 int rGoal = 0;
