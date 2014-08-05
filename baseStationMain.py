@@ -27,10 +27,11 @@ from sys import version_info
 print("Python {}.{}.{}".format(*version_info[0:3]))
 pythonSeries = version_info[0]
 
+from slambotgui.maps import DataMatrix
+from slambotgui.slams import Slam
+from slambotgui.comms import SerialThread
 
 # User preferences
-TALK_TO_XBEE = False
-USE_ODOMETRY = True
 INTERNAL_MAP = True
 LOG_ALL_DATA = True
 LOGFILE_NAME = "test" # do not include .log extension here
@@ -45,6 +46,9 @@ ANG_MAX = 360; # maximum scan angle
 MAP_SIZE_M = 16.0 # size of region to be mapped [m]
 INSET_SIZE_M = 2.0 # size of relative map
 MAP_RES_PIX_PER_M = 100 # number of pixels of data per meter [pix/m]
+MAP_SIZE_PIXELS = int(MAP_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the entire map
+MAP_DEPTH = 5 # depth of data points on map (levels of certainty)
+print("Each pixel is " + str(round(1000.0/MAP_RES_PIX_PER_M,1)) + "mm, or " + str(round(1000.0/MAP_RES_PIX_PER_M/25.4,2)) + "in.")
 
 # Robot constants
 REV_2_TICK = 1000.0/3 # encoder ticks per wheel revolution
@@ -65,6 +69,10 @@ REV_2_DEG = ROT_2_DEG*(REV_2_MM/ROT_2_MM) # degrees of rotation per wheel revolu
 DEG_2_TICK = REV_2_TICK/REV_2_DEG * ANGULAR_FLUX # [ticks/deg]
 TICK_2_DEG = REV_2_DEG/REV_2_TICK * 1.0/ANGULAR_FLUX # [deg/tick]
 
+# pack up constants to pass to things that need them
+DATA_KWARGS = {'MAP_SIZE_PIXELS':MAP_SIZE_PIXELS,'INSET_SIZE_M':INSET_SIZE_M,'MAP_RES_PIX_PER_M':MAP_RES_PIX_PER_M,'MAP_DEPTH':MAP_DEPTH}
+SLAM_KWARGS = {'MAP_SIZE_PIXELS':MAP_SIZE_PIXELS,'MAP_SIZE_M':MAP_SIZE_M,'ANG_MAX':ANG_MAX,'DIST_MAX':DIST_MAX,'TICK_2_MM':TICK_2_MM,'TICK_2_DEG':TICK_2_DEG}
+SER_KWARGS = {'DIST_MIN':DIST_MIN,'DIST_MAX':DIST_MAX,'ANG_MIN':ANG_MIN,'ANG_MAX':ANG_MAX}
 
 def main():
   # app window setup
@@ -74,10 +82,10 @@ def main():
   root.lower() # bring terminal to front
 
   # helper object setup
-  data = Data()
-  slam = Slam()
+  data = DataMatrix(**DATA_KWARGS)
+  slam = Slam(dataFile if LOG_ALL_DATA else None, **SLAM_KWARGS)
   queues = [Queue(), Queue(), Queue()]
-  serThread = SerialThread(*queues)
+  serThread = SerialThread(*queues, **SER_KWARGS)
 
   # create main app
   app = App(root, data, slam, queues, serThread)
@@ -100,11 +108,13 @@ if pythonSeries == 2:
   from tkFont import Font
   from tkMessageBox import askokcancel
   from Queue import Queue
+  from Queue import Empty as QueueEmpty
 elif pythonSeries == 3:
   import tkinter as tk
   from tkinter.font import Font
   from tkinter.messagebox import askokcancel
   from queue import Queue
+  from queue import Empty as QueueEmpty
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from matplotlib.gridspec import GridSpec
@@ -118,63 +128,6 @@ VIEW_SIZE_M = 8.0 # default size of region to be shown in display [m]
 # Protocol constants
 NUM_SAMP = 370 # number of serial packets needed for 1 scan (guesstimate)
 
-
-# used in Slam class
-from breezyslam.algorithms import RMHC_SLAM
-from breezyslam.components import Laser
-# Laser constants
-SCAN_SIZE = 360 # number of points per scan
-SCAN_RATE_HZ = 1980.0/360 # 1980points/sec * scan/360points [scans/sec]
-SCAN_DETECTION_ANGLE = ANG_MAX
-SCAN_DISTANCE_NO_DETECTION_MM = DIST_MAX
-SCAN_DETECTION_MARGIN = 0
-LASER_OFFSET_MM = 35 # this value is negative what it should be # update() returns LIDAR unit position
-# BreezySLAM map constants
-MAP_SIZE_PIXELS = int(MAP_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the entire map
-# MAP_SIZE_M = MAP_SIZE_M
-MAP_QUALITY = 50
-HOLE_WIDTH_MM = 200
-RANDOM_SEED = 0xabcd
-
-
-# used in Data class # note that Data.saveImage() imports PIL and subprocess for map image saving and viewing
-import numpy as np # for array processing and matplotlib display
-from scipy.ndimage.interpolation import rotate
-float2int = lambda x: int(0.5 + x)
-# Map constants (derived)
-INSET_SIZE_PIX = int(INSET_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the inset map
-MAP_CENTER_PIX = int(MAP_SIZE_PIXELS/2) # indices of map center []
-MM_2_PIX = MAP_RES_PIX_PER_M/1000.0 # [pix/mm]
-DEG_2_RAD = np.pi/180.0
-MAP_DEPTH = 5 # depth of data points on map (levels of certainty)
-ROBOT_DEPTH = MAP_DEPTH + 1 # value of robot in map storage
-
-
-# used in SerialThread class
-if pythonSeries == 2: from Queue import Empty as QueueEmpty
-elif pythonSeries == 3: from queue import Empty as QueueEmpty
-import sys
-import threading # allow serial checking to happen on top of tkinter interface things
-from serial import Serial
-from serial.serialutil import SerialException
-from serial.tools import list_ports # get computer's port info
-from time import time, sleep
-from struct import unpack # parse incoming serial data
-from math import copysign
-if pythonSeries == 3: raw_input = lambda inStr: input(inStr)
-bits2mask = lambda bitList: sum([2**el for el in bitList])
-# Patience constants
-SER_READ_TIMEOUT = 1 # time to wait for data from Arduino before connection considered lost [s]
-MAX_RX_TRIES = 8 # max number of times to try to tell LIDAR to start before giving up # 1s/try
-# Packet constants (shared with Arduino)
-ENC_FLAG = '\xFE' # encoder data flag (&thorn)
-SCN_FLAG = '\xFF' # scan data flag (&yuml)
-BUF_LEN = 20 # points per transmit packet []
-PKT_SIZE = 4 # length of scan data packet [bytes]
-ENC_SIZE = 8 # length of encoder data packet [bytes]
-DFAC = 0.5; # distance resolution factor [1/mm]
-AFAC = 8.0; # angle resolution factor [1/deg]
-XBEE_BAUD = 125000 # maximum baud rate allowed by Arduino and XBee [hz] # 250k=0x3D090, 125k=0x1E848
 
 
 class App:
@@ -219,7 +172,7 @@ class App:
     self.slam = slam # do slam processing
     self.initUI() # create all the pretty stuff in the Tkinter window
 
-  def initUI(self, io=True):
+  def initUI(self):
     # current (and only) figure
     self.fig = plt.figure(figsize=(9, 5), dpi=131.2) # create matplotlib figure (dpi calculated from $ xrandr)
     gs = GridSpec(1,3) # layout of plots in figure
@@ -265,11 +218,10 @@ class App:
     # create buttons
     tk.Button(self.master, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
     tk.Button(self.master, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
-    if io:
-      tk.Label(self.master, text="Command: ").pack(side="left")
-      self.entryBox = tk.Entry(master=self.master, width=15)
-      self.entryBox.pack(side="left", padx = 5)
-      tk.Button(self.master, text="Send (enter)", command=self.sendCommand).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+    tk.Label(self.master, text="Command: ").pack(side="left")
+    self.entryBox = tk.Entry(master=self.master, width=15)
+    self.entryBox.pack(side="left", padx = 5)
+    tk.Button(self.master, text="Send (enter)", command=self.sendCommand).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
     monospaceFont = Font(family="Courier", weight='bold', size=12)
     tk.Label(self.master, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
     tk.Button(self.master, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
@@ -282,8 +234,8 @@ class App:
 
     elif funcStep == 1:
       self.resetting = False
-      self.data = Data()
-      self.slam = Slam()
+      self.data = DataMatrix(**DATA_KWARGS)
+      self.slam = Slam(dataFile if LOG_ALL_DATA else None, **SLAM_KWARGS)
       self.updateData() # pull data from queue, put into data matrix
       self.updateMap() # draw new data matrix
 
@@ -432,336 +384,6 @@ class App:
     
     self.sendingCommand = False # reset manual sending
     self.master.after(CMD_RATE, lambda: self.autosendCommand(numTries=numTries, wantACK=wantACK, strIn=strIn, strOut=strOut))
-
-
-class Slam(RMHC_SLAM):
-  # init          creates the BreezySLAM objects needed for mapping
-  # getBreezyMap  returns BreezySLAM's current internal map
-  # updateSlam    takes LIDAR data and uses BreezySLAM to calculate the robot's new position
-  # getVelocities uses encoder data to return robot position deltas (forward, angular, and time)
-
-  def __init__(self):
-    laser = Laser(SCAN_SIZE, \
-                  SCAN_RATE_HZ, \
-                  SCAN_DETECTION_ANGLE, \
-                  SCAN_DISTANCE_NO_DETECTION_MM, \
-                  SCAN_DETECTION_MARGIN, \
-                  LASER_OFFSET_MM)
-    RMHC_SLAM.__init__(self, \
-                       laser, \
-                       MAP_SIZE_PIXELS, \
-                       MAP_SIZE_M, \
-                       MAP_QUALITY, \
-                       HOLE_WIDTH_MM, \
-                       RANDOM_SEED)
-    self.prevEncPos = () # robot encoder data
-    self.currEncPos = () # left wheel [ticks], right wheel [ticks], timestamp [ms]
-
-    self.breezyMap = bytearray(MAP_SIZE_PIXELS**2) # initialize map array for BreezySLAM's internal mapping
-
-  def getBreezyMap(self):
-    return self.breezyMap
-
-  def updateSlam(self, points): # 15ms
-    distVec = [0 for i in range(SCAN_SIZE)]
-
-    for point in points: # create breezySLAM-compatible data from raw scan data
-      dist = point[0]
-      index = int(point[1])
-      if not 0 <= index < SCAN_SIZE: continue
-      distVec[index] = int(dist)
-
-    # note that breezySLAM switches the x- and y- axes (their x is forward, 0deg; y is right, +90deg)
-    if LOG_ALL_DATA: dataFile.write(' '.join((str(el) for el in list(self.currEncPos)+distVec)) + '\n')
-    distVec = [distVec[i-180] for i in range(SCAN_SIZE)]
-    self.update(distVec, self.getVelocities() if USE_ODOMETRY else None) # update slam information using particle filtering on LIDAR scan data // 10ms
-    x, y, theta = self.getpos()
-
-    self.getmap(self.breezyMap) # write internal map to breezyMap
-
-    return (y, x, theta)
-
-  def getVelocities(self):
-    dLeft, dRight, dt = [curr - prev for (curr,prev) in zip(self.currEncPos, self.prevEncPos)]
-    self.prevEncPos = self.currEncPos
-
-    # overflow correction:
-    if dLeft > 2**15: dLeft -= 2**16-1 # signed short
-    elif dLeft < -2**15: dLeft += 2**16-1
-
-    if dRight > 2**15: dRight -= 2**16-1 # signed short
-    elif dRight < -2**15: dRight += 2**16-1
-
-    if dt < -2**15: dt += 2**16-1 # unsigned short # time always increases, so only check positive overflow
-
-    dxy = TICK_2_MM * (dLeft + dRight)/2 # forward change in position
-    dtheta = TICK_2_DEG * (dLeft - dRight)/2 # positive theta is clockwise
-
-    if abs(dxy) > 50 or abs(dtheta) > 20: # encoder data is messed up
-      return copysign(2, dxy), copysign(1, dtheta), 1/SCAN_RATE_HZ
-    return dxy, dtheta, dt/1000.0 # [mm], [deg], [s]
-
-
-class Data:
-  # init            creates data matrix and information vectors for processing
-  # getMapMatrix    returns the map matrix
-  # getInsetMatrix  returns the inset map matrix
-  # get_robot_rel   returns the robot's position in mm relative to where is started
-  # getRobotPos     populates robot position information needed by other methods of Data
-  # drawBreezyMap   adds the BreezySLAM internal map to the map matrix
-  # drawMap         adds scan data to map matrix
-  # drawInset       adds scan data to inset matrix
-  # drawRobot       adds robot position to data matrix, in the form of an arrow of red pixels
-  # drawPath        draws portion of the robot's trajectory in the form of red dots on the desired object
-  # saveImage       uses PIL to write an image file from the data matrix
-
-  def __init__(self):
-    print("Each pixel is " + str(round(1000.0/MAP_RES_PIX_PER_M,1)) + "mm, or " + str(round(1000.0/MAP_RES_PIX_PER_M/25.4,2)) + "in.")
-    self.mapMatrix = np.zeros((MAP_SIZE_PIXELS, MAP_SIZE_PIXELS), dtype=np.uint8) # initialize data matrix
-    self.insetMatrix = np.zeros((INSET_SIZE_PIX, INSET_SIZE_PIX), dtype=np.uint8) # initialize inset matrix
-    self.trajectory = [] # robot location history, in pixels
-    self.robot_init = () # x [mm], y [mm], th [deg], defined from lower-left corner of map
-    self.robot_rel = () # robot location relative to start position
-    self.robot_pix = () # robot pixel location, relative to upper-left (0,0) of image matrix
-
-    self.robotSprite = np.array([[0,0,0,0,0,1,0,0,0,0,0], # shape of robot on map
-                                 [0,0,0,0,0,1,0,0,0,0,0],
-                                 [0,0,0,0,1,1,1,0,0,0,0],
-                                 [0,0,0,0,1,1,1,0,0,0,0],
-                                 [0,0,0,1,1,0,1,1,0,0,0],
-                                 [0,0,0,1,1,0,1,1,0,0,0],
-                                 [0,0,1,1,0,0,0,1,1,0,0],
-                                 [0,0,1,1,0,0,0,1,1,0,0],
-                                 [0,1,1,0,0,0,0,0,1,1,0],
-                                 [0,1,1,1,1,1,1,1,1,1,0],
-                                 [1,1,1,1,1,1,1,1,1,1,1],
-                                 [0,0,0,0,0,0,0,0,0,0,0],
-                                 [0,0,0,0,0,0,0,0,0,0,0]])
-
-  def getMapMatrix(self):
-    return self.mapMatrix
-
-  def getInsetMatrix(self):
-    return self.insetMatrix
-
-  def get_robot_rel(self):
-    return self.robot_rel
-
-  def getRobotPos(self, curr_pos, init=False):
-    if init: self.robot_init = curr_pos
-    self.robot_rel = tuple([curr-init for (curr,init) in zip(curr_pos,self.robot_init)]) # displacement from start position (center of map)
-    xpix = float2int(curr_pos[0]*MM_2_PIX) # robot wrt map center (mO) + mO wrt matrix origin (xO)  = robot wrt xO [pix]
-    ypix = MAP_SIZE_PIXELS-float2int(curr_pos[1]*MM_2_PIX) # y is negative because pixels increase downwards (+y_mm = -y_pix = -np rows)
-    self.robot_pix = (xpix, ypix, self.robot_rel[2])
-    self.trajectory.append(self.robot_pix)
-
-  def drawBreezyMap(self, breezyMap): # 7ms
-    if breezyMap: # get data from internal BreezySLAM map
-      dataMat = 255-np.flipud(np.resize(np.array(breezyMap, dtype=np.uint8),(MAP_SIZE_PIXELS,MAP_SIZE_PIXELS)).T) # 7ms
-      self.mapMatrix = (MAP_DEPTH/255.0*dataMat).astype(np.uint8) # 8ms
-
-  def drawMap(self, points):
-    for (dist, ang) in points:
-      # pixel location of scan point # point wrt robot + robot wrt x0 = point wrt x0
-      x_pix = float2int( MAP_CENTER_PIX + ( self.robot_rel[0] + dist*np.sin((ang+self.robot_rel[2])*DEG_2_RAD) )*MM_2_PIX )
-      y_pix = float2int( MAP_CENTER_PIX - ( self.robot_rel[1] + dist*np.cos((ang+self.robot_rel[2])*DEG_2_RAD) )*MM_2_PIX )
-      try:
-        self.mapMatrix[y_pix, x_pix] += self.mapMatrix[y_pix, x_pix] < MAP_DEPTH # increment value at location if below maximum value
-      except IndexError:
-        print("scan out of bounds")
-
-  def drawInset(self):
-    x, y = self.robot_pix[0:2] # indices of center of robot in main map
-    raw = int(INSET_SIZE_PIX*0.75) # half the size of the main map segment to capture
-    rad = INSET_SIZE_PIX/2 # half the size of the final segment
-
-    mapChunk = self.mapMatrix[y-raw:y+raw, x-raw:x+raw]
-    s = slice(raw-rad, raw+rad, 1) # region of rotated chunk that we want
-    self.insetMatrix = rotate(mapChunk, self.robot_rel[2], output=np.uint8, order=1, reshape=False)[s,s]
-
-  def drawRobot(self, mapObject, pos):
-    robotMat = rotate(self.robotSprite, -pos[2])
-    hgt = (robotMat.shape[0]-1)/2 # indices of center of robot
-    wid = (robotMat.shape[1]-1)/2
-    x = slice(pos[0]-wid, pos[0]+wid+1, 1) # columns
-    y = slice(pos[1]-hgt, pos[1]+hgt+1, 1) # rows
-    mapObject[y,x][robotMat.astype(bool)] = ROBOT_DEPTH
-
-  def drawPath(self, mapObject, inSlice):
-    for x, y, theta in self.trajectory[inSlice]:
-      mapObject[y,x] = ROBOT_DEPTH
-
-  def saveImage(self):
-    from PIL import Image # don't have PIL? sorry (try pypng)
-
-    imgData = np.array(self.mapMatrix) # copy map data
-    self.drawRobot(imgData, self.robot_pix)
-    self.drawPath(imgData, slice(None,-1,None)) # draw all values except last one # same as ":-1"
-    robot = imgData > MAP_DEPTH # save location of robot
-    imgData = MAP_DEPTH - imgData # invert colors to make 0 black and MAP_DEPTH white
-    GB = np.where(robot, 0, 255.0/MAP_DEPTH*imgData).astype(np.uint8) # scale map data and assign to red, green, and blue layers
-    R = np.where(robot, 255, GB).astype(np.uint8) # add robot path to red layer
-
-    im = Image.fromarray(np.dstack((R,GB,GB))) # create image from depth stack of three layers
-    filename = str(MAP_RES_PIX_PER_M)+"_pixels_per_meter.png" # filename is map resolution
-    im.save(filename) # save image
-    print("Image saved to " + filename)
-
-    import subprocess # used to display the image (not necessary for save)
-
-    subprocess.call(["eog", filename]) # open with eye of gnome
-
-
-class SerialThread(threading.Thread):
-  # init defines objects and prompts user for port information if necessary
-  # connectToPort attempts to establish serial port connection
-  # talkToXBee allows direct communication with the XBee if optional flag is set
-  # waitForResponse attempts to establish contact with the Arduino
-  # stop ends serial communication with the Arduino
-  # writeCmd sends data to the Arduino
-  # getACK returns whether we have received an ACK from the Arduino
-  # resetACK resets boolean indicating that Arduino has received a command
-  # run is the main loop, which handles all serial communication
-
-  def __init__(self, statusQueue, RXQueue, TXQueue):
-    super(SerialThread, self).__init__() # nicer way to initialize base class (only works with new-style classes)
-    self.statusQueue = statusQueue
-    self.RXQueue = RXQueue
-    self.TXQueue = TXQueue
-    self._stop = threading.Event() # create flag
-    self.gotACK = False
-
-    self.connectToPort() # initialize serial connection with XBee
-    if TALK_TO_XBEE: self.talkToXBee() # optional (see function)
-    self.waitForResponse() # start LIDAR and make sure Arduino is sending stuff back to us
-
-    self.ser.timeout = SER_READ_TIMEOUT
-
-  def connectToPort(self):
-    # first select a port to use
-    portList = sorted([port[0] for port in list_ports.comports() if 'USB' in port[0] or 'COM' in port[0]])
-    if not portList: # list empty
-      sys.exit("Check your COM ports for connected devices and compatible drivers.")
-    elif len(portList) == 1: # if there's only one device connected, use it
-      portName = portList[0]
-    else: # query user for which port to use
-      print("Available COM ports:")
-      print(portList)
-      portRequested = raw_input("Please select a port number [%s]: " % ', '.join([str(el[-1]) for el in portList]))
-      portName = (portList[0][0:-1] + portRequested) if portRequested is not "" else portList[0]
-
-    # then try to connect to it
-    try:
-      self.ser = Serial(portName, baudrate=XBEE_BAUD)
-    except SerialException:
-      sys.exit("Invalid port.")
-    else:
-      sleep(1) # give time to connect to serial port
-      print("Successfully connected to: %s" % portName)
-
-  def talkToXBee(self): # allow direct interaction with XBee (Arduino code needs modification)
-    if raw_input("Configure this (Arduino's) XBee before mapping? [y/N]: ").lower() == 'y':
-      while True:
-        inputStr = raw_input("Enter XBee command: ")
-        sendStr = inputStr if (inputStr == "+++" or inputStr == '') else inputStr + '\x0D'
-        self.ser.write(sendStr)
-        tstart = time()
-        while time() < tstart + 1: # give XBee 1 sec to respond
-          if self.ser.inWaiting(): print(self.ser.read())
-        if inputStr.lower() == "atcn": # we've told the XBee to exit command mode, so we should, too...
-          self.ser.write('q') # tells Arduino to stop talking to XBee (shouldn't affect computer XBee...)
-          break
-      sys.exit("Please restart XBee and then re-run this code.") # XBee has to power cycle for change to take effect
-
-  def waitForResponse(self):
-    tryCount = 0
-    while True:
-      self.ser.write('l') # tell robot to start lidar
-      self.ser.flushInput() # wipe the receiving buffer
-      print("Command sent to robot... waiting for response... check robot power...")
-      sleep(1) # give time for Arduino to send something
-
-      if self.ser.inWaiting(): break # until we see something...
-
-      tryCount += 1
-      if tryCount >= MAX_RX_TRIES: sys.exit("No response received from Arduino.") # only try for MAX_RX_TRIES seconds before giving up
-
-    print("Data received... live data processing commencing...")
-
-  def stop(self, try1=True):
-    if try1:
-      self._stop.set() # set stop flag to True
-      sleep(0.2) # give serial reading loop time to finish current point before flushInput()
-      # prevents: SerialException: device reports readiness to read but returned no data (device disconnected?)
-    self.ser.write('o') # tell robot to turn lidar off
-    self.ser.flushInput() # empty input serial buffer
-    sleep(0.5) # give time to see if data is still coming in
-    if self.ser.inWaiting(): self.stop(try1=False)
-
-  def writeCmd(self, outBytes):
-    self.ser.write(outBytes)
-
-  def getACK(self):
-    return self.gotACK
-
-  def resetACK(self):
-    self.gotACK = False
-
-  def run(self):
-    MASK1 = bits2mask(range(0,4)) # 0b00001111
-    MASK2 = bits2mask(range(4,8)) # 0b11110000
-
-    tstart = time()
-    lagged, missed, total, scans = 0,0,0,0
-    while not self._stop.isSet(): # pulls and processes all incoming and outgoing serial data
-      # relay commands from root to Arduino
-      try:
-        self.writeCmd(self.TXQueue.get_nowait())
-      except QueueEmpty:
-        pass
-
-      # check if data in buffer is too old to be useful (300 packets)
-      if self.ser.inWaiting() > 300*PKT_SIZE:
-        lagged += self.ser.inWaiting()/PKT_SIZE
-        self.ser.flushInput()
-
-      # pull serial data from computer buffer (XBee)
-      # in order sent (bytes comma-separated):  dist[0:7], dist[8:12] ang[0:3], ang[4:12]
-      pointLine = self.ser.read(PKT_SIZE) # distance and angle (blocking)
-      if len(pointLine) < PKT_SIZE: # timeout occurs
-        self.statusQueue.put("ser.read() timeout. Send 'l' iff LIDAR stopped.")
-        continue # try again
-
-      if time() > tstart + 1.0: # report status of serial thread to root every second
-        tstart += 1.0
-        self.statusQueue.put("{:4} lagged, {:2} errors in {:4} points, {:2} scans.".format(lagged,missed,total,scans))
-        lagged, missed, total, scans = 0,0,0,0
-
-
-      # check for command ACK
-      if pointLine == ENC_FLAG*PKT_SIZE:
-        self.gotACK = True # ACK from Arduino
-        continue # move to the next point
-
-      # check for encoder data packet
-      if pointLine[0:2] == ENC_FLAG*2:
-        pointLine += self.ser.read(ENC_SIZE-PKT_SIZE) # read more bytes to complete longer packet
-        self.RXQueue.put(unpack('<2hH',pointLine[2:])) # little-endian 2 signed shorts, 1 unsigned short
-        scans += 1
-        continue # move to the next point
-
-      # check for lidar data packet
-      if pointLine[-1] == SCN_FLAG:
-        byte1, byte2, byte3 = unpack('<3B',pointLine[0:-1]) # little-endian 3 bytes
-        distCurr = (byte1 | (byte2 & MASK1) << 8)/DFAC # 12 least-significant (sent first) bytes12 bits
-        angleCurr = (byte3 << 4 | (byte2 & MASK2) >> 4)/AFAC # 4 most-significant (sent last) bytes2 bits, 8 byte1 bits
-        if DIST_MIN < distCurr < DIST_MAX and angleCurr <= ANG_MAX: # data matches what was transmitted
-          self.RXQueue.put((distCurr, angleCurr))
-          total += 1
-        else: # invalid point received (communication error)
-          while self.ser.read(1) != SCN_FLAG: pass # delete current packet up to and including SCN_FLAG byte
-          missed += 1
-        continue # move to the next point
 
 
 if __name__ == '__main__':
