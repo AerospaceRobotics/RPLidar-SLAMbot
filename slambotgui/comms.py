@@ -1,16 +1,34 @@
+#!/usr/bin/env python
+
+# comms.py - serial thread
+# 
+# Copyright (C) 2014 Michael Searing
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 
 from sys import version_info
 
 if version_info[0] == 2: from Queue import Empty as QueueEmpty
 elif version_info[0] == 3: from queue import Empty as QueueEmpty
 import sys
-import threading # allow serial checking to happen on top of tkinter interface things
+from threading import Thread, Event # allow serial checking to happen on top of tkinter interface things
 from serial import Serial
 from serial.serialutil import SerialException
 from serial.tools import list_ports # get computer's port info
 from time import time, sleep
 from struct import unpack # parse incoming serial data
-from math import copysign
 if version_info[0] == 3: raw_input = lambda inStr: input(inStr)
 
 bits2mask = lambda bitList: sum([2**el for el in bitList])
@@ -32,7 +50,7 @@ AFAC = 8.0; # angle resolution factor [1/deg]
 XBEE_BAUD = 125000 # maximum baud rate allowed by Arduino and XBee [hz] # 250k=0x3D090, 125k=0x1E848
 
 
-class SerialThread(threading.Thread):
+class SerialThread(Thread):
   # init defines objects and prompts user for port information if necessary
   # connectToPort attempts to establish serial port connection
   # talkToXBee allows direct communication with the XBee if optional flag is set
@@ -43,17 +61,15 @@ class SerialThread(threading.Thread):
   # resetACK resets boolean indicating that Arduino has received a command
   # run is the main loop, which handles all serial communication
 
-  def __init__(self, statusQueue, RXQueue, TXQueue, DIST_MIN=0, DIST_MAX=6000, ANG_MIN=0, ANG_MAX=360, **unused):
-    super(SerialThread, self).__init__() # nicer way to initialize base class (only works with new-style classes)  
+  def __init__(self, laser, statusQueue, RXQueue, TXQueue):
+    super(SerialThread, self).__init__() # nicer way to initialize base class (only works with new-style classes)
     self.statusQueue = statusQueue
     self.RXQueue = RXQueue
     self.TXQueue = TXQueue
-    self.distMin = DIST_MIN
-    self.distMax = DIST_MAX
-    self.angMin = ANG_MIN
-    self.angMax = ANG_MAX
+    self.distMin = laser.DIST_MIN
+    self.distMax = laser.DIST_MAX
 
-    self._stop = threading.Event() # create flag
+    self._stop = Event() # create flag
     self.gotACK = False
 
     self.connectToPort() # initialize serial connection with XBee
@@ -179,7 +195,7 @@ class SerialThread(threading.Thread):
         byte1, byte2, byte3 = unpack('<3B',pointLine[0:-1]) # little-endian 3 bytes
         distCurr = (byte1 | (byte2 & MASK1) << 8)/DFAC # 12 least-significant (sent first) bytes12 bits
         angleCurr = (byte3 << 4 | (byte2 & MASK2) >> 4)/AFAC # 4 most-significant (sent last) bytes2 bits, 8 byte1 bits
-        if self.distMin < distCurr < self.distMax and self.angMin <= angleCurr <= self.angMax: # data matches what was transmitted
+        if self.distMin < distCurr < self.distMax and 0 <= angleCurr <= 360: # data matches what was transmitted
           self.RXQueue.put((distCurr, angleCurr))
           total += 1
         else: # invalid point received (communication error)

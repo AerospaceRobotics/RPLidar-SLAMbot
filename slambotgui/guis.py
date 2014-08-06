@@ -1,21 +1,43 @@
+#!/usr/bin/env python
+
+# guis.py - GUI frames for Tkinter
+# 
+# Copyright (C) 2014 Michael Searing
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 
 from sys import version_info
 
-if version_info[0] == 2: from Tkinter import Frame as tkFrame
-elif version_info[0] == 3: from tkinter import Frame as tkFrame
+if version_info[0] == 2: import Tkinter as tk
+elif version_info[0] == 3: import tkinter as tk
+
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from matplotlib.gridspec import GridSpec
 
-class MatplotlibMaps(tkFrame): # tkinter frame, inheriting from the tkinter Frame class
+VIEW_SIZE_M = 4.0 # default size of region to be shown in display [m]
+
+class MatplotlibMaps(tk.Frame): # tkinter frame, inheriting from the tkinter Frame class
   # init            draws all fields in the output frame of the main App
   # updateMaps      draws all map data onto the matplotlib figures
   # removeMarkers   deletes all temporary markers on the main map (old robot position)
   # drawMarker      draws robot on main map using matplotlib marker
 
-  def __init__(self, master, mapMatrix, insetMatrix, MAP_SIZE_M=8, VIEW_SIZE_M=4, INSET_SIZE_M=2, MAP_DEPTH=5, **unused):
-    tkFrame.__init__(self, master, bd=5, relief='sunken') # explicitly initialize base class and create window
+  def __init__(self, master, mapMatrix, insetMatrix, MAP_SIZE_M=8, INSET_SIZE_M=2, MAP_DEPTH=5, **unused):
+    tk.Frame.__init__(self, master, bd=5, relief='sunken') # explicitly initialize base class and create window
     self.markers = [] # current matplotlib markers
 
     # current (and only) figure
@@ -73,3 +95,101 @@ class MatplotlibMaps(tkFrame): # tkinter frame, inheriting from the tkinter Fram
   def drawMarker(self, ax, pos, temporary=True):
     marker = ax.plot(pos[0]/1000, pos[1]/1000, markersize=8, color='red', marker=(3,1,-pos[2]), markeredgewidth=0, aa=False)
     if temporary: self.markers.extend(marker) # marker is a list of matplotlib.line.Line2D objects
+
+
+######################################################################################
+
+
+if version_info[0] == 2: from tkFont import Font
+elif version_info[0] == 3: from tkinter.font import Font
+
+CMD_RATE = 100 # minimum time between auto-send commands [ms]
+MAX_TX_TRIES = 3 # max number of times to try to resend command before giving up
+
+class EntryButtons(tk.Frame):
+  # sendCommand     triggered by request to manually send the command in the text box
+  # autoSendCommand loop to control sending of commands, including automatic retries and continuous drive commands
+
+  def __init__(self, master, robot, closeWin, restartAll, saveImage, getACK, resetACK, TXQueue, statusStr):
+    tk.Frame.__init__(self, master, bd=5, relief='sunken') # explicitly initialize base class and create window
+    self.master = master
+
+    self.sendingCommand = False # are we trying to manually send a command?
+    self.CMDS = {'v':{'prop':"speed 0..255", 'func':lambda x: str(x)                        }, # send motor speed as given
+                 'w':{'prop':"forward mm",   'func':lambda x: str(int(robot.MM_2_TICK*x))   }, # convert mm to ticks
+                 'a':{'prop':"left deg",     'func':lambda x: str(int(robot.DEG_2_TICK*x))  }, # convert degrees to ticks
+                 's':{'prop':"reverse mm",   'func':lambda x: str(int(robot.MM_2_TICK*x))   }, # convert mm to ticks
+                 'd':{'prop':"right deg",    'func':lambda x: str(int(robot.DEG_2_TICK*x))  }} # convert degrees to ticks
+
+    self.closeWin, self.restartAll, self.saveImage, self.getACK, self.resetACK, self.TXQueue, self.statusStr \
+      =  closeWin,      restartAll,      saveImage,      getACK,      resetACK,      TXQueue, statusStr
+
+
+    # create buttons
+    tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
+    tk.Button(self, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
+    tk.Label(self, text="Command: ").pack(side="left")
+    self.entryBox = tk.Entry(master=self, width=15)
+    self.entryBox.pack(side="left", padx = 5)
+    tk.Button(self, text="Send (enter)", command=self.sendCommand).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+    monospaceFont = Font(family="Courier", weight='bold', size=12)
+    tk.Label(self, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
+    tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+
+    # bind keyboard inputs to functions
+    master.bind('<Escape>', lambda event: self.closeWin()) # escape exits program after prompt
+    master.bind('<Shift-R>', lambda event: self.restartAll()) # shift and capital R does a soft reset
+    self.entryBox.bind('<Return>', lambda event: self.sendCommand()) # enter sends the command in the command box
+
+  def sendCommand(self):
+    self.sendingCommand = True
+
+  def autosendCommand(self, numTries=0, wantACK=False, strIn='', strOut=''):
+    # expecting ACK from Arduino (only for value-setting commands in 'vwasd')
+    if wantACK:
+      gotACK = self.getACK() # has the serial thread received an ACK?
+
+      # either ACK received or command resent too many times
+      if gotACK or numTries >= MAX_TX_TRIES:
+        numTries, wantACK = 0, False # reset stuff
+        self.entryBox.delete(0,"end") # clear box if we're done sending command
+        self.resetACK() # tell serial thread that we got the ACK
+
+      # no ACK received and not resent too many times
+      else:
+        numTries += 1 # keep track of how many times we're resending command
+        self.TXQueue.put(strOut) # send last command
+        self.entryBox.delete(0,"end")
+        self.entryBox.insert(0,"try {0}: {1}".format(numTries, strIn)) # tell box what we're doing
+
+    # there's a new command to send (that isn't empty)
+    elif self.entryBox.get(): # string in box isn't empty
+      strIn = self.entryBox.get() # get new command
+
+      # auto-send continuous drive commands (capitalized normal commands)
+      if strIn in 'WASD':
+        self.TXQueue.put(strIn[0])
+
+      # manual-send
+      elif self.sendingCommand:
+        command = strIn[0]
+        if command in list(self.CMDS): # we're giving the robot a value for a command
+          try:
+            num = int(strIn[1:])
+          except ValueError:
+            self.entryBox.delete(1,"end")
+            self.entryBox.insert(1,"[{}]".format(self.CMDS[command]['prop'])) # prompt user with proper command format
+            self.entryBox.selection_range(1,'end')
+          else:
+            wantACK = True # start resending the command if it isn't received
+            strOut = command + self.CMDS[command]['func'](num) # re-create command with converted values
+            self.TXQueue.put(strOut)
+        else: # otherwise send only first character
+          self.TXQueue.put(command)
+          self.entryBox.delete(0,"end") # clear box
+
+      else:
+        pass # wait until manual-send for other commands
+    
+    self.sendingCommand = False # reset manual sending
+    self.master.after(CMD_RATE, lambda: self.autosendCommand(numTries=numTries, wantACK=wantACK, strIn=strIn, strOut=strOut))
