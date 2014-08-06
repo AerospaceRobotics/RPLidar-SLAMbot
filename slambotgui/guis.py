@@ -193,3 +193,32 @@ class EntryButtons(tk.Frame):
     
     self.sendingCommand = False # reset manual sending
     self.master.after(CMD_RATE, lambda: self.autosendCommand(numTries=numTries, wantACK=wantACK, strIn=strIn, strOut=strOut))
+
+
+######################################################################################
+
+
+if version_info[0] == 2: from tkFont import Font
+elif version_info[0] == 3: from tkinter.font import Font
+
+class StatusButtons(tk.Frame):
+  # sendCommand     triggered by request to manually send the command in the text box
+  # autoSendCommand loop to control sending of commands, including automatic retries and continuous drive commands
+
+  def __init__(self, master, closeWin, restartAll, saveImage, statusStr):
+    tk.Frame.__init__(self, master, bd=5, relief='sunken') # explicitly initialize base class and create window
+    self.master = master
+
+    self.closeWin, self.restartAll, self.saveImage, self.statusStr \
+      =  closeWin,      restartAll,      saveImage, statusStr
+
+    # create buttons
+    tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
+    tk.Button(self, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
+    monospaceFont = Font(family="Courier", weight='bold', size=12)
+    tk.Label(self, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
+    tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+
+    # bind keyboard inputs to functions
+    master.bind('<Escape>', lambda event: self.closeWin()) # escape exits program after prompt
+    master.bind('<Shift-R>', lambda event: self.restartAll()) # shift and capital R does a soft reset

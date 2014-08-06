@@ -74,7 +74,12 @@ class DaguRover5(TrackedRobot):
     WHEEL_BASE = 177.0 # length of treads [mm]
     WHEEL_TRACK = 190.0 # separation of treads [mm]
     TREAD_ERROR = 0.90 # continuous tread slips this much relative to slip of wheels (experimental)
-    TrackedRobot.__init__(self, REV_2_TICK, WHEEL_DIAMETER, WHEEL_BASE, WHEEL_TRACK, TREAD_ERROR)
+    TrackedRobot.__init__(self, \
+                          REV_2_TICK, \
+                          WHEEL_DIAMETER, \
+                          WHEEL_BASE, \
+                          WHEEL_TRACK, \
+                          TREAD_ERROR)
 
 
 #####################################################################

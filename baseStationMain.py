@@ -54,8 +54,8 @@ NUM_SAMP = 370 # number of serial packets needed for 1 scan (guesstimate)
 
 # User preferences
 INTERNAL_MAP = True
-LOG_ALL_DATA = True
-if LOG_ALL_DATA: dataFile = open('test.log','w')
+LOG_ALL_DATA = False
+if LOG_ALL_DATA: dataFile = open('examples/test.log','w')
 else: dataFile = None
 
 # Laser constants (shared with Arduino)
@@ -86,7 +86,6 @@ def main():
   root.lift() # bring tk window to front if initialization finishes
   root.focus_force() # make tk window active one (so you don't need to click on it for hotkeys to work)
   root.mainloop() # start Tkinter GUI loop
-  if LOG_ALL_DATA: dataFile.close()
 
 
 class App:
@@ -216,3 +215,4 @@ class App:
 if __name__ == '__main__':
   print(GPL)
   main()
+  if LOG_ALL_DATA: dataFile.close()
