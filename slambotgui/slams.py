@@ -20,7 +20,7 @@ class Slam(RMHC_SLAM):
   # updateSlam    takes LIDAR data and uses BreezySLAM to calculate the robot's new position
   # getVelocities uses encoder data to return robot position deltas (forward, angular, and time)
 
-  def __init__(self, dataFile, MAP_SIZE_PIXELS=800, MAP_SIZE_M=16, ANG_MAX=360, DIST_MAX=6000, TICK_2_MM=1, TICK_2_DEG=1):
+  def __init__(self, dataFile=None, MAP_SIZE_PIXELS=800, MAP_SIZE_M=8, ANG_MAX=360, DIST_MAX=6000, TICK_2_MM=1, TICK_2_DEG=1, **unused):
     SCAN_DETECTION_ANGLE = ANG_MAX
     SCAN_DISTANCE_NO_DETECTION_MM = DIST_MAX
     laser = Laser(SCAN_SIZE, \
@@ -39,7 +39,7 @@ class Slam(RMHC_SLAM):
 
     self.tick2mm = TICK_2_MM
     self.tick2deg = TICK_2_DEG
-    if dataFile: self.dataFile = dataFile
+    self.dataFile = dataFile
 
     self.prevEncPos = () # robot encoder data
     self.currEncPos = () # left wheel [ticks], right wheel [ticks], timestamp [ms]

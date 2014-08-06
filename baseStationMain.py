@@ -24,17 +24,19 @@ under certain conditions; please cite the source."
 print(GPL)
 
 from sys import version_info
-print("Python {}.{}.{}".format(*version_info[0:3]))
 pythonSeries = version_info[0]
+print("Python {}.{}.{}".format(*version_info[0:3]))
 
 from slambotgui.maps import DataMatrix
 from slambotgui.slams import Slam
 from slambotgui.comms import SerialThread
+from slambotgui.guis import MatplotlibMaps
 
 # User preferences
 INTERNAL_MAP = True
 LOG_ALL_DATA = True
-LOGFILE_NAME = "test" # do not include .log extension here
+if LOG_ALL_DATA: dataFile = open('test.log','w')
+else: dataFile = None
 
 # Laser constants (shared with Arduino)
 DIST_MIN = 100; # minimum distance
@@ -69,37 +71,10 @@ REV_2_DEG = ROT_2_DEG*(REV_2_MM/ROT_2_MM) # degrees of rotation per wheel revolu
 DEG_2_TICK = REV_2_TICK/REV_2_DEG * ANGULAR_FLUX # [ticks/deg]
 TICK_2_DEG = REV_2_DEG/REV_2_TICK * 1.0/ANGULAR_FLUX # [deg/tick]
 
-# pack up constants to pass to things that need them
-DATA_KWARGS = {'MAP_SIZE_PIXELS':MAP_SIZE_PIXELS,'INSET_SIZE_M':INSET_SIZE_M,'MAP_RES_PIX_PER_M':MAP_RES_PIX_PER_M,'MAP_DEPTH':MAP_DEPTH}
-SLAM_KWARGS = {'MAP_SIZE_PIXELS':MAP_SIZE_PIXELS,'MAP_SIZE_M':MAP_SIZE_M,'ANG_MAX':ANG_MAX,'DIST_MAX':DIST_MAX,'TICK_2_MM':TICK_2_MM,'TICK_2_DEG':TICK_2_DEG}
-SER_KWARGS = {'DIST_MIN':DIST_MIN,'DIST_MAX':DIST_MAX,'ANG_MIN':ANG_MIN,'ANG_MAX':ANG_MAX}
-
-def main():
-  # app window setup
-  root = tk.Tk() # create tkinter window
-  root.wm_title("Aerospace Robotics LIDAR Viewer") # name window
-  root.geometry('+100+100') # position windows 100,100 pixels from top-left corner
-  root.lower() # bring terminal to front
-
-  # helper object setup
-  data = DataMatrix(**DATA_KWARGS)
-  slam = Slam(dataFile if LOG_ALL_DATA else None, **SLAM_KWARGS)
-  queues = [Queue(), Queue(), Queue()]
-  serThread = SerialThread(*queues, **SER_KWARGS)
-
-  # create main app
-  app = App(root, data, slam, queues, serThread)
-
-  # Start loops
-  app.serThread.start() # begin fetching data from serial port and processing it
-  app.updateData() # pull data from queue, put into data matrix
-  app.updateMap() # draw new data matrix
-  app.autosendCommand() # check for user input and automatically send it
-
-  # Bring GUI to front # app.master = root
-  app.master.lift() # bring tk window to front if initialization finishes
-  app.master.focus_force() # make tk window active one (so you don't need to click on it for hotkeys to work)
-  app.master.mainloop() # start Tkinter GUI loop
+KWARGS, gvars = {}, globals()
+for var in ['LOG_ALL_DATA','dataFile','DIST_MIN','DIST_MAX','ANG_MIN','ANG_MAX', \
+            'MAP_SIZE_M','INSET_SIZE_M','MAP_RES_PIX_PER_M','MAP_SIZE_PIXELS','MAP_DEPTH','TICK_2_MM','TICK_2_DEG']:
+  KWARGS[var] = gvars[var] # constants required in modules
 
 
 # used in Root class
@@ -115,10 +90,7 @@ elif pythonSeries == 3:
   from tkinter.messagebox import askokcancel
   from queue import Queue
   from queue import Empty as QueueEmpty
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
-from matplotlib.gridspec import GridSpec
-paddedStr = lambda inStr, length: '{0: <{width}s}'.format(inStr, width=length)[0:length]
+paddedStr = lambda inStr, length: '{0: <{width}s}'.format(inStr, width=length)[0:length] if length != 0 else inStr
 # GUI constants
 CMD_RATE = 100 # minimum time between auto-send commands [ms]
 DATA_RATE = 50 # minimum time between updating data from lidar [ms]
@@ -127,115 +99,96 @@ MAX_TX_TRIES = 3 # max number of times to try to resend command before giving up
 VIEW_SIZE_M = 8.0 # default size of region to be shown in display [m]
 # Protocol constants
 NUM_SAMP = 370 # number of serial packets needed for 1 scan (guesstimate)
+CMDS = {'v':{'prop':"speed 0..255", 'func':lambda x: str(x)                 }, # send motor speed as given
+        'w':{'prop':"forward mm",   'func':lambda x: str(int(MM_2_TICK*x))  }, # convert mm to ticks
+        'a':{'prop':"left deg",     'func':lambda x: str(int(DEG_2_TICK*x)) }, # convert degrees to ticks
+        's':{'prop':"reverse mm",   'func':lambda x: str(int(MM_2_TICK*x))  }, # convert mm to ticks
+        'd':{'prop':"right deg",    'func':lambda x: str(int(DEG_2_TICK*x)) }} # convert degrees to ticks
 
+def main():
+  root = tk.Tk() # create tkinter window
+  root.lower() # send tkinter window to back
 
+  # create main app
+  app = App(root)
+
+  # Start loops
+  app.serThread.start() # begin fetching data from serial port and processing it
+  app.updateData() # pull data from queue, put into data matrix
+  app.updateMap() # draw new data matrix
+  app.autosendCommand() # check for user input and automatically send it
+
+  # Bring GUI to front # app.master = root
+  root.lift() # bring tk window to front if initialization finishes
+  root.focus_force() # make tk window active one (so you don't need to click on it for hotkeys to work)
+  root.mainloop() # start Tkinter GUI loop
 
 class App:
-  # init            creates all objects, calls initUI, and starts all loops (including serial thread)
-  # initUI          draws all elements in the GUI
+  # init            creates all objects, draws initUI, and starts all loops (including serial thread)
   # resetAll        restarts all objects that store map data, allowing history to be wiped without hard reset
   # closeWin        first prompts the user if they really want to close, then ends serial thread and tkinter
   # saveImage       tells data object to capture the current map and save as a png
-  # removeMarkers   deletes all temporary markers on the main map (old robot position)
-  # drawMarker      draws robot on main map using matplotlib marker
   # getScanData     pulls LIDAR data directly from the serial port and does preliminary processing
   # updateData      calls getScanData, and updates the slam object and data matrix with this data, and loops to itself
   # updateMap       draws a new map, using whatever data is available, and loops to itself
   # sendCommand     triggered by request to manually send the command in the text box
   # autoSendCommand loop to control sending of commands, including automatic retries and continuous drive commands
 
-  def __init__(self, master, data, slam, queues, serThread):
+  def __init__(self, master):
     self.master = master # root tk window
     self.master.protocol("WM_DELETE_WINDOW", self.closeWin) # control what happens when a window is closed externally (e.g. by the 'x')
+    self.master.wm_title("Aerospace Robotics LIDAR Viewer") # name window
+    self.master.geometry('+100+100') # position windows 100,100 pixels from top-left corner
 
-    # Initialize serial object, prompting user for input if required
-    self.statusQueue = queues[0] # status of serial thread # FIFO queue by default
-    self.RXQueue = queues[1] # data from serial to root # FIFO queue by default
-    self.TXQueue = queues[2] # data from root to serial # FIFO queue by default
-    self.serThread = serThread # initialize thread object, getting user input if required
+    # initialize serial object, prompting user for input if required
+    self.statusQueue = Queue() # status of serial thread # FIFO queue by default
+    self.RXQueue = Queue() # data from serial to root # FIFO queue by default
+    self.TXQueue = Queue() # data from root to serial # FIFO queue by default
+    self.serThread = SerialThread(self.statusQueue, self.RXQueue, self.TXQueue, **KWARGS) # initialize thread object
 
-    # Initialize root variables
+    # initialize root variables
     self.statusStr = tk.StringVar() # status of serThread
     self.resetting = False # are we in the process of soft restarting?
     self.paused = False # should the loops be doing nothing right now?
-    self.markers = [] # current matplotlib markers
-    self.points = [] # current scan data
-    self.cmds = {'v':{'prop':"speed 0..255",  'func':lambda x: str(x)                 }, # send motor speed as given
-                 'w':{'prop':"forward mm",    'func':lambda x: str(int(MM_2_TICK*x))  }, # convert mm to ticks
-                 'a':{'prop':"left deg",      'func':lambda x: str(int(DEG_2_TICK*x)) }, # convert degrees to ticks
-                 's':{'prop':"reverse mm",    'func':lambda x: str(int(MM_2_TICK*x))  }, # convert mm to ticks
-                 'd':{'prop':"right deg",     'func':lambda x: str(int(DEG_2_TICK*x)) }} # convert degrees to ticks
     self.sendingCommand = False # are we trying to manually send a command?
 
-    # Initialize 
-    self.data = data # handle map data
-    self.slam = slam # do slam processing
-    self.initUI() # create all the pretty stuff in the Tkinter window
+    # helper objects
+    self.data = DataMatrix(**KWARGS) # handle map data
+    self.slam = Slam(**KWARGS) # do slam processing
 
-  def initUI(self):
-    # current (and only) figure
-    self.fig = plt.figure(figsize=(9, 5), dpi=131.2) # create matplotlib figure (dpi calculated from $ xrandr)
-    gs = GridSpec(1,3) # layout of plots in figure
-
-    # plot color settings
-    cmap = plt.get_cmap("binary") # opposite of "gray"
-    cmap.set_over("red") # robot map value is set to higher than maximum map value
-
-    # subplot 1 (stationary map)
-    self.ax1 = plt.subplot(gs[0,:2]) # add plot 1 to figure
-    self.ax1.set_title("Region Map") # name and label plot
-    self.ax1.set_xlabel("X Position [mm]")
-    self.ax1.set_ylabel("Y Position [mm]")
-    self.myImg1 = self.ax1.imshow(self.data.getMapMatrix(), interpolation="none", cmap=cmap, vmin=0, vmax=MAP_DEPTH, # plot data
-              extent=[-MAP_SIZE_M/2, MAP_SIZE_M/2, -MAP_SIZE_M/2, MAP_SIZE_M/2]) # extent sets labels by matching limits to edges of matrix
-    self.ax1.set_xlim(-VIEW_SIZE_M/2, VIEW_SIZE_M/2) # pre-zoom image to defined default MAP_SIZE_M
-    self.ax1.set_ylim(-VIEW_SIZE_M/2, VIEW_SIZE_M/2)
-
-    # colorbar
-    self.cbar = self.fig.colorbar(self.myImg1, orientation="vertical") # create colorbar
-
-    # subplot 2 (relative map)
-    self.ax2 = plt.subplot(gs[0,2]) # add plot 2 to figure
-    self.ax2.set_title("Robot Environs") # name and label plot
-    self.ax2.set_xlabel("", family="monospace")
-    self.myImg2 = self.ax2.imshow(self.data.getInsetMatrix(), interpolation="none", cmap=cmap, vmin=0, vmax=MAP_DEPTH, # plot data
-              extent=[-INSET_SIZE_M/2, INSET_SIZE_M/2, -INSET_SIZE_M/2, INSET_SIZE_M/2])
-    self.drawMarker(self.ax2, (0,0,0), temporary=False) # draw permanent robot at center of inset map
-
-    # turn figure data into matplotlib draggable canvas
-    self.canvas = FigureCanvasTkAgg(self.fig, master=self.master) # tkinter interrupt function
-    self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=1) # put figure at top of window
-
-    # add matplotlib toolbar for easy navigation around map
-    NavigationToolbar2TkAgg(self.canvas, self.master).update() # tkinter interrupt function
-    self.canvas._tkcanvas.pack(side="top", fill=tk.BOTH, expand=1) # actually goes on bottom...not sure why
-
-    # bind keyboard inputs to functions
-    self.master.bind('<Escape>', lambda event: self.closeWin()) # tkinter interrupt function
-    self.master.bind('<Shift-R>', lambda event: self.restartAll()) # tkinter interrupt function
-    self.master.bind('<Return>', lambda event: self.sendCommand()) # tkinter interrupt function
+    # create all the pretty stuff in the Tkinter window
+    self.outFrame = MatplotlibMaps(self.master, self.data.getMapMatrix(), self.data.getInsetMatrix(), **KWARGS)
+    self.ioFrame = tk.Frame(master, bd=5, relief=tk.SUNKEN)
 
     # create buttons
-    tk.Button(self.master, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
-    tk.Button(self.master, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
-    tk.Label(self.master, text="Command: ").pack(side="left")
-    self.entryBox = tk.Entry(master=self.master, width=15)
+    tk.Button(self.ioFrame, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
+    tk.Button(self.ioFrame, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
+    tk.Label(self.ioFrame, text="Command: ").pack(side="left")
+    self.entryBox = tk.Entry(master=self.ioFrame, width=15)
     self.entryBox.pack(side="left", padx = 5)
-    tk.Button(self.master, text="Send (enter)", command=self.sendCommand).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+    tk.Button(self.ioFrame, text="Send (enter)", command=self.sendCommand).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
     monospaceFont = Font(family="Courier", weight='bold', size=12)
-    tk.Label(self.master, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
-    tk.Button(self.master, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+    tk.Label(self.ioFrame, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
+    tk.Button(self.ioFrame, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+
+    # bind keyboard inputs to functions
+    self.master.bind('<Escape>', lambda event: self.closeWin()) # escape exits program after prompt
+    self.master.bind('<Shift-R>', lambda event: self.restartAll()) # shift and capital R does a soft reset
+    self.entryBox.bind('<Return>', lambda event: self.sendCommand()) # enter sends the command in the command box
+
+    # pack frames
+    self.outFrame.pack(side="top", fill='both')
+    self.inFrame.pack(side="left", fill='both', expand=True)
 
   def restartAll(self, funcStep=0): # two-part initialization to be re-done at soft reset
     if funcStep == 0:
       self.resetting = True # stop currently running loops
       self.master.after(2000, lambda: self.restartAll(funcStep=1)) # let processor wrap things up elsewhere # should be smarter
       return
-
     elif funcStep == 1:
       self.resetting = False
-      self.data = DataMatrix(**DATA_KWARGS)
-      self.slam = Slam(dataFile if LOG_ALL_DATA else None, **SLAM_KWARGS)
+      self.data = DataMatrix(**KWARGS)
+      self.slam = Slam(**KWARGS)
       self.updateData() # pull data from queue, put into data matrix
       self.updateMap() # draw new data matrix
 
@@ -248,29 +201,18 @@ class App:
       self.serThread.stop() # tell serial thread to stop running
       print("Closing program")
       self.master.quit() # kills interpreter (necessary for some reason)
-    else:
-      self.paused = False
+    else: self.paused = False
 
   def saveImage(self): # function prototype until data is initialized
     self.statusStr.set(paddedStr("Saving. Close image to resume.", len(self.statusStr.get()))) # keep length of label constant
     self.updateMap(loop=False) # make sure we save the newest map
     self.data.saveImage()
 
-  def removeMarkers(self):
-    for i in range(len(self.markers)):
-      self.markers[i].remove()
-      del self.markers[i]
-
-  def drawMarker(self, ax, pos, temporary=True):
-    marker = ax.plot(pos[0]/1000, pos[1]/1000, markersize=8, color='red', marker=(3,1,-pos[2]), markeredgewidth=0, aa=False)
-    if temporary: self.markers.extend(marker) # marker is a list of matplotlib.line.Line2D objects
-
   def getScanData(self, repeat=False):
     self.points = [] # wipe old data before writing new data
     while True:
       # Make sure there's actually data to get
-      try:
-        queueItem = self.RXQueue.get_nowait()
+      try: queueItem = self.RXQueue.get_nowait()
       except QueueEmpty: # something's wrong
         self.statusStr.set(paddedStr("RXQueue empty. Send 'l' iff LIDAR stopped.", len(self.statusStr.get())))
         return # stop because no data to read
@@ -282,23 +224,17 @@ class App:
           break # encoder data signals new scan
         else:
           print("RXQueue broken (something weird happened...)")
-
     if repeat: self.getScanData()
 
   def updateData(self, init=True):
     self.dataInit = init
     if not self.paused:
-      try: # do this before anything else
-        status = self.statusQueue.get_nowait()
-      except QueueEmpty:
-        pass
-      else:
-        length = len(self.statusStr.get())
-        self.statusStr.set(paddedStr(status, length) if length != 0 else status)
+      try: status = self.statusQueue.get_nowait() # do this before anything else
+      except QueueEmpty: pass
+      else: self.statusStr.set(paddedStr(status, len(self.statusStr.get())))
 
       if self.RXQueue.qsize() > (2 if init else 1)*NUM_SAMP: # ready to pull new scan data
-        # pull data from serial thread via RXQueue
-        # ignore first scan (we're assuming it's not a complete scan, so not reliable)
+        # pull data from serial thread via RXQueue, ignoring the first scan, which is incomplete
         self.getScanData(repeat=init) # 2ms
 
         # update robot position
@@ -312,31 +248,17 @@ class App:
 
   def updateMap(self, loop=True):
     if not self.paused and not self.dataInit: # wait until first data update to update map
-      # create maps
       if INTERNAL_MAP: self.data.drawBreezyMap(self.slam.getBreezyMap()) # draw map using slam data # 16ms
       else: self.data.drawMap(self.points) # draw map using scan points
       self.data.drawInset() # new relative map # 6ms
-
-      # send maps to image object
-      self.myImg1.set_data(self.data.getMapMatrix()) # 20ms
-      self.myImg2.set_data(self.data.getInsetMatrix()) # 0.4ms
-
-      # finishing touches
-      self.removeMarkers() # delete old robot position from map
-      self.drawMarker(self.ax1, self.data.get_robot_rel()) # add new robot position to map # 0.2ms
-      self.ax2.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*self.data.get_robot_rel()))
-
-      # refresh the figure
-      self.canvas.draw() # 200ms
+      self.outFrame.updateMaps(self.data.get_robot_rel(), self.data.getMapMatrix(), self.data.getInsetMatrix())
     if loop and not self.resetting: self.master.after(MAP_RATE, self.updateMap)
 
   def sendCommand(self):
     self.sendingCommand = True
 
   def autosendCommand(self, numTries=0, wantACK=False, strIn='', strOut=''):
-    # note that ACK-checking only applies to value-setting commands in 'vwasd'
-
-    # expecting ACK from Arduino
+    # expecting ACK from Arduino (only for value-setting commands in 'vwasd')
     if wantACK:
       gotACK = self.serThread.getACK() # has the serial thread received an ACK?
 
@@ -364,16 +286,16 @@ class App:
       # manual-send
       elif self.sendingCommand:
         command = strIn[0]
-        if command in list(self.cmds): # we're giving the robot a value for a command
+        if command in list(CMDS): # we're giving the robot a value for a command
           try:
             num = int(strIn[1:])
           except ValueError:
             self.entryBox.delete(1,"end")
-            self.entryBox.insert(1,"[{}]".format(self.cmds[command]['prop'])) # prompt user with proper command format
+            self.entryBox.insert(1,"[{}]".format(CMDS[command]['prop'])) # prompt user with proper command format
             self.entryBox.selection_range(1,'end')
           else:
             wantACK = True # start resending the command if it isn't received
-            strOut = command + self.cmds[command]['func'](num) # re-create command with converted values
+            strOut = command + CMDS[command]['func'](num) # re-create command with converted values
             self.TXQueue.put(strOut)
         else: # otherwise send only first character
           self.TXQueue.put(command)
@@ -387,6 +309,5 @@ class App:
 
 
 if __name__ == '__main__':
-  if LOG_ALL_DATA: dataFile = open(LOGFILE_NAME+'.log','w')
   main()
   if LOG_ALL_DATA: dataFile.close()

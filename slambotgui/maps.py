@@ -19,7 +19,7 @@ class DataMatrix:
   # drawPath        draws portion of the robot's trajectory in the form of red dots on the desired object
   # saveImage       uses PIL to write an image file from the data matrix
 
-  def __init__(self, MAP_SIZE_PIXELS=800, INSET_SIZE_M=2, MAP_RES_PIX_PER_M=100, MAP_DEPTH=5):
+  def __init__(self, MAP_SIZE_PIXELS=800, INSET_SIZE_M=2, MAP_RES_PIX_PER_M=100, MAP_DEPTH=5, **unused):
     self.mapSize_pix = MAP_SIZE_PIXELS
     self.mapRes_pixPerM = MAP_RES_PIX_PER_M
     self.mapDepth = MAP_DEPTH

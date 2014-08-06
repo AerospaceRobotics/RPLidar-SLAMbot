@@ -43,7 +43,7 @@ class SerialThread(threading.Thread):
   # resetACK resets boolean indicating that Arduino has received a command
   # run is the main loop, which handles all serial communication
 
-  def __init__(self, statusQueue, RXQueue, TXQueue, DIST_MIN=0, DIST_MAX=6000, ANG_MIN=0, ANG_MAX=360):
+  def __init__(self, statusQueue, RXQueue, TXQueue, DIST_MIN=0, DIST_MAX=6000, ANG_MIN=0, ANG_MAX=360, **unused):
     super(SerialThread, self).__init__() # nicer way to initialize base class (only works with new-style classes)  
     self.statusQueue = statusQueue
     self.RXQueue = RXQueue
@@ -136,8 +136,8 @@ class SerialThread(threading.Thread):
     MASK1 = bits2mask(range(0,4)) # 0b00001111
     MASK2 = bits2mask(range(4,8)) # 0b11110000
 
-    tstart = time()
     lagged, missed, total, scans = 0,0,0,0
+    tstart = time()
     while not self._stop.isSet(): # pulls and processes all incoming and outgoing serial data
       # relay commands from root to Arduino
       try:
@@ -161,7 +161,6 @@ class SerialThread(threading.Thread):
         tstart += 1.0
         self.statusQueue.put("{:4} lagged, {:2} errors in {:4} points, {:2} scans.".format(lagged,missed,total,scans))
         lagged, missed, total, scans = 0,0,0,0
-
 
       # check for command ACK
       if pointLine == ENC_FLAG*PKT_SIZE:
