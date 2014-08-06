@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from matplotlib.gridspec import GridSpec
 
-VIEW_SIZE_M = 4.0 # default size of region to be shown in display [m]
+VIEW_SIZE_M = 6.0 # default size of region to be shown in display [m]
 
 class MatplotlibMaps(tk.Frame): # tkinter frame, inheriting from the tkinter Frame class
   # init            draws all fields in the output frame of the main App

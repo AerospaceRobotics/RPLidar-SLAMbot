@@ -64,7 +64,7 @@ class Slam(RMHC_SLAM):
 
     # note that breezySLAM switches the x- and y- axes (their x is forward, 0deg; y is right, +90deg)
     if self.dataFile: self.dataFile.write(' '.join((str(el) for el in list(self.currEncPos)+distVec)) + '\n')
-    distVec = [distVec[i-180] for i in range(self.scanSize)]
+    distVec = [distVec[i-180] for i in range(self.scanSize)] # rotate scan data so middle of vector is straight ahead, 0deg
     self.update(distVec, self.getVelocities() if USE_ODOMETRY else None) # 10ms
     x, y, theta = self.getpos()
 

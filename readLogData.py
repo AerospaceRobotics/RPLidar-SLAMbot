@@ -38,19 +38,21 @@ from slambotgui.maps import DataMatrix
 from slambotgui.slams import Slam
 from slambotgui.guis import MatplotlibMaps, StatusButtons
 from slambotgui.components import DaguRover5, RPLIDAR
+from slambotgui.cvslamshow import SlamShow
 paddedStr = lambda inStr, length: '{0: <{width}s}'.format(inStr, width=length)[0:length] if length != 0 else inStr
 
 # GUI constants
-DATA_RATE = 50 # minimum time between updating data from lidar [ms]
-MAP_RATE = 500 # minimum time between updating map [ms]
+DATA_RATE = 10 # minimum time between updating data from lidar [ms]
+MAP_RATE = 100 # minimum time between updating map [ms]
 
 # Protocol constants
 NUM_SAMP = 370 # number of serial packets needed for 1 scan (guesstimate)
 
 # User preferences
 INTERNAL_MAP = True
+FAST_MAPPING = True
 dataFile = None # keeps log file from being written to
-logName = 'examples/data_24JUL14_14m.log'
+logName = 'examples/data_6AUG14_20m.log'
 
 # Laser constants (shared with Arduino)
 DIST_MIN = 100; # minimum distance
@@ -59,7 +61,7 @@ DIST_MAX = 6000; # maximum distance
 # Map constants
 MAP_SIZE_M = 16.0 # size of region to be mapped [m]
 INSET_SIZE_M = 2.0 # size of relative map
-MAP_RES_PIX_PER_M = 100 # number of pixels of data per meter [pix/m]
+MAP_RES_PIX_PER_M = 50 # number of pixels of data per meter [pix/m]
 MAP_SIZE_PIXELS = int(MAP_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the entire map
 MAP_DEPTH = 5 # depth of data points on map (levels of certainty)
 print("Each pixel is " + str(round(1000.0/MAP_RES_PIX_PER_M,1)) + "mm, or " + str(round(1000.0/MAP_RES_PIX_PER_M/25.4,2)) + "in.")
@@ -112,13 +114,20 @@ class App:
     self.data = DataMatrix(**KWARGS) # handle map data
     self.slam = Slam(self.robot, self.laser, **KWARGS) # do slam processing
 
-    # create all the pretty stuff in the Tkinter window
-    self.outFrame = MatplotlibMaps(self.master, self.data.getMapMatrix(), self.data.getInsetMatrix(), **KWARGS)
-    self.inFrame = StatusButtons(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr)
-
-    # pack frames
-    self.outFrame.pack(side="top", fill='both')
-    self.inFrame.pack(side="left", fill='both', expand=True)
+    if FAST_MAPPING:
+      # create the OpenCV window
+      self.outFrame = SlamShow(MAP_SIZE_PIXELS, MAP_RES_PIX_PER_M/1000.0, 'SLAM Rover: Hit ESC to quit')
+      # create Tkinter control bar
+      self.inFrame = StatusButtons(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr)
+      # pack frame
+      self.inFrame.pack(side="left", fill='both')
+    else:
+      # create all the pretty stuff in the Tkinter window
+      self.outFrame = MatplotlibMaps(self.master, self.data.getMapMatrix(), self.data.getInsetMatrix(), **KWARGS)
+      self.inFrame = StatusButtons(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr)
+      # pack frames
+      self.outFrame.pack(side="top", fill='both')
+      self.inFrame.pack(side="left", fill='both', expand=True)
 
     # Start loops
     self.updateData() # pull data from queue, put into data matrix
@@ -177,10 +186,20 @@ class App:
 
   def updateMap(self, loop=True):
     if not self.paused and not self.dataInit: # wait until first data update to update map
-      if INTERNAL_MAP: self.data.drawBreezyMap(self.slam.getBreezyMap()) # draw map using slam data # 16ms
-      else: self.data.drawMap(self.points) # draw map using scan points
-      self.data.drawInset() # new relative map # 6ms
-      self.outFrame.updateMaps(self.data.get_robot_rel(), self.data.getMapMatrix(), self.data.getInsetMatrix())
+      if INTERNAL_MAP:
+        self.data.drawBreezyMap(self.slam.getBreezyMap()) # draw map using slam data # 16ms
+      else:
+        self.data.drawMap(self.points) # draw map using scan points
+
+      if FAST_MAPPING:
+        # Display map and robot position, quitting on ESC
+        self.outFrame.displayMap(self.slam.getBreezyMap())
+        self.outFrame.displayRobot(self.slam.getpos())
+        if self.outFrame.refresh() == 27: self.closeWin()
+      else:
+        # Update display frame with new map
+        self.data.drawInset() # new relative map # 6ms
+        self.outFrame.updateMaps(self.data.get_robot_rel(), self.data.getMapMatrix(), self.data.getInsetMatrix())
     if loop and not self.restarting: self.master.after(MAP_RATE, self.updateMap)
 
 
