@@ -25,6 +25,7 @@ under certain conditions; please cite the source."
 
 
 from sys import version_info
+import os
 print("Python {}.{}.{}".format(*version_info[0:3]))
 
 # used in Root class
@@ -52,7 +53,7 @@ NUM_SAMP = 370 # number of serial packets needed for 1 scan (guesstimate)
 INTERNAL_MAP = True
 FAST_MAPPING = True
 dataFile = None # keeps log file from being written to
-logName = 'examples/data_6AUG14_20m.log'
+logName = os.path.join('examples','data_6AUG14_20m.log')
 
 # Laser constants (shared with Arduino)
 DIST_MIN = 100; # minimum distance

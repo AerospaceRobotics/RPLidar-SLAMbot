@@ -123,6 +123,7 @@ class DataMatrix:
 
   def saveImage(self):
     from PIL import Image # don't have PIL? sorry (try pypng)
+    import os
 
     imgData = np.array(self.mapMatrix) # copy map data
     self.drawRobot(imgData, self.robot_pix)
@@ -133,9 +134,9 @@ class DataMatrix:
     R = np.where(robot, 255, GB).astype(np.uint8) # add robot path to red layer
 
     im = Image.fromarray(np.dstack((R,GB,GB))) # create image from depth stack of three layers
-    filename = "examples/"+str(self.mapRes_pixPerM)+"_pixels_per_meter.png" # filename is map resolution
-    im.save(filename) # save image
-    print("Image saved to " + filename)
+    filename = str(self.mapRes_pixPerM)+"_pixels_per_meter.png" # filename is map resolution
+    im.save(os.path.join('examples',filename) # save image
+    print("Image saved to " + "examples/"+ filename)
 
     import subprocess # used to display the image (not necessary for save)
 
