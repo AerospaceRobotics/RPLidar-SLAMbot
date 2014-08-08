@@ -20,9 +20,6 @@
 
 from breezyslam.algorithms import RMHC_SLAM
 
-USE_ODOMETRY = True
-
-MAP_QUALITY = 50
 HOLE_WIDTH_MM = 200
 RANDOM_SEED = 0xabcd
 
@@ -32,7 +29,9 @@ class Slam(RMHC_SLAM):
   # updateSlam    takes LIDAR data and uses BreezySLAM to calculate the robot's new position
   # getVelocities uses encoder data to return robot position deltas, is only run if USE_ODOMETRY
 
-  def __init__(self, robot, laser, dataFile=None, MAP_SIZE_PIXELS=800, MAP_SIZE_M=8, **unused):
+  def __init__(self, robot, laser, dataFile=None, MAP_SIZE_M=8.0, MAP_RES_PIX_PER_M=100, USE_ODOMETRY=True, MAP_QUALITY=5, **unused):
+    self.USE_ODOMETRY = USE_ODOMETRY
+    MAP_SIZE_PIXELS = int(MAP_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the entire map
     RMHC_SLAM.__init__(self, \
                        laser, \
                        MAP_SIZE_PIXELS, \
@@ -65,7 +64,7 @@ class Slam(RMHC_SLAM):
     # note that breezySLAM switches the x- and y- axes (their x is forward, 0deg; y is right, +90deg)
     if self.dataFile: self.dataFile.write(' '.join((str(el) for el in list(self.currEncPos)+distVec)) + '\n')
     distVec = [distVec[i-180] for i in range(self.scanSize)] # rotate scan data so middle of vector is straight ahead, 0deg
-    self.update(distVec, self.getVelocities() if USE_ODOMETRY else None) # 10ms
+    self.update(distVec, self.getVelocities() if self.USE_ODOMETRY else None) # 10ms
     x, y, theta = self.getpos()
 
     self.getmap(self.breezyMap) # write internal map to breezyMap

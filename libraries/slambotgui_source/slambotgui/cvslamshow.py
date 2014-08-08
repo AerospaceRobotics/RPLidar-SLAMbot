@@ -66,7 +66,7 @@ class SlamShow(object):
         self.image = cv.CreateImageHeader((map_size_pixels,map_size_pixels), cv.IPL_DEPTH_8U, 3)
     
         # Create an OpenCV window for displaying the map
-        cv.NamedWindow(window_name)
+        cv.NamedWindow(window_name, cv.CV_WINDOW_AUTOSIZE)
         
         # Set up font for displaying velocities
         self.font = cv.InitFont(FONT_FACE, 1, 1)
@@ -95,8 +95,8 @@ class SlamShow(object):
         # Rotate the polyline by the current angle
         robot_points = map(lambda pt: rotate(pt, theta_deg), robot_points)
         
-        # Convert the robot position from meters to pixels
-        x_pix, y_pix = self.mm2pix(x_mm), self.mm2pix(y_mm)
+        # Convert the robot position from meters (up is positive) to pixels (down is positive)
+        x_pix, y_pix = self.mm2pix(x_mm), self.map_size_pixels-self.mm2pix(y_mm)
                         
         # Move the polyline to the current robot position
         robot_points = map(lambda pt: (x_pix+pt[0], y_pix+pt[1]), robot_points)
@@ -168,14 +168,14 @@ class SlamShow(object):
 
 
     # Builds an array of points for a polyline representing the robot, pointing 
-    # rightward and centered at (0,0).
-    # Currently builds an isoceles triangle pointing rightward
+    # upward and centered at (0,0).
+    # Currently builds an isoceles triangle pointing upward
     def robot_polyline(self, scale):
-        xlft = -ROBOT_HEIGHT / 2 * scale
-        xrgt =  ROBOT_HEIGHT / 2 * scale
-        ybot =  ROBOT_WIDTH / 2  * scale
+        xlft = -ROBOT_WIDTH / 2 * scale
+        xrgt =  ROBOT_WIDTH / 2 * scale
+        ybot =  ROBOT_HEIGHT / 2  * scale
         ytop = -ROBOT_HEIGHT / 2 * scale
-        return [(xlft,ybot), (xrgt,0), (xlft,ytop)]
+        return [(xrgt,ybot), (0,ytop), (xlft,ybot)]
                         
     # Converts millimeters to pixels
     def mm2pix(self, mm):

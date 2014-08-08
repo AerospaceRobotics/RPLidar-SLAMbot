@@ -36,7 +36,7 @@ class MatplotlibMaps(tk.Frame): # tkinter frame, inheriting from the tkinter Fra
   # removeMarkers   deletes all temporary markers on the main map (old robot position)
   # drawMarker      draws robot on main map using matplotlib marker
 
-  def __init__(self, master, mapMatrix, insetMatrix, MAP_SIZE_M=8, INSET_SIZE_M=2, MAP_DEPTH=5, **unused):
+  def __init__(self, master, mapMatrix, insetMatrix, MAP_SIZE_M=8, INSET_SIZE_M=2, **unused):
     tk.Frame.__init__(self, master, bd=5, relief='sunken') # explicitly initialize base class and create window
     self.markers = [] # current matplotlib markers
 
@@ -45,15 +45,14 @@ class MatplotlibMaps(tk.Frame): # tkinter frame, inheriting from the tkinter Fra
     gs = GridSpec(1,3) # layout of plots in figure
 
     # plot color settings
-    cmap = plt.get_cmap('binary') # opposite of "gray"
-    cmap.set_over('red') # robot map value is set to higher than maximum map value
+    cmap = plt.get_cmap('gray') # opposite of "binary"
 
     # subplot 1 (stationary map)
     self.ax1 = plt.subplot(gs[0,:2]) # add plot 1 to figure
     self.ax1.set_title("Region Map") # name and label plot
     self.ax1.set_xlabel("X Position [mm]")
     self.ax1.set_ylabel("Y Position [mm]")
-    self.myImg1 = self.ax1.imshow(mapMatrix, interpolation="none", cmap=cmap, vmin=0, vmax=MAP_DEPTH, # plot data
+    self.myImg1 = self.ax1.imshow(mapMatrix, interpolation="none", cmap=cmap, vmin=0, vmax=255, # plot data
               extent=[-MAP_SIZE_M/2, MAP_SIZE_M/2, -MAP_SIZE_M/2, MAP_SIZE_M/2]) # extent sets labels by matching limits to edges of matrix
     self.ax1.set_xlim(-VIEW_SIZE_M/2, VIEW_SIZE_M/2) # pre-zoom image to defined default MAP_SIZE_M
     self.ax1.set_ylim(-VIEW_SIZE_M/2, VIEW_SIZE_M/2)
@@ -65,7 +64,7 @@ class MatplotlibMaps(tk.Frame): # tkinter frame, inheriting from the tkinter Fra
     self.ax2 = plt.subplot(gs[0,2]) # add plot 2 to figure
     self.ax2.set_title("Robot Environs") # name and label plot
     self.ax2.set_xlabel("", family='monospace')
-    self.myImg2 = self.ax2.imshow(insetMatrix, interpolation='none', cmap=cmap, vmin=0, vmax=MAP_DEPTH, # plot data
+    self.myImg2 = self.ax2.imshow(insetMatrix, interpolation='none', cmap=cmap, vmin=0, vmax=255, # plot data
               extent=[-INSET_SIZE_M/2, INSET_SIZE_M/2, -INSET_SIZE_M/2, INSET_SIZE_M/2])
     self.drawMarker(self.ax2, (0,0,0), temporary=False) # draw permanent robot at center of inset map
 
@@ -213,11 +212,11 @@ class StatusButtons(tk.Frame):
       =  closeWin,      restartAll,      saveImage, statusStr
 
     # create buttons
-    tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
-    tk.Button(self, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
+    tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5)
+    tk.Button(self, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5)
     monospaceFont = Font(family="Courier", weight='bold', size=12)
     tk.Label(self, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
-    tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+    tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5)
 
     # bind keyboard inputs to functions
     master.bind('<Escape>', lambda event: self.closeWin()) # escape exits program after prompt

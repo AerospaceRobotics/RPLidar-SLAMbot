@@ -98,7 +98,7 @@ class RPLIDAR(Laser):
     SCAN_DETECTION_ANGLE = 360
     SCAN_DISTANCE_NO_DETECTION_MM = self.DIST_MAX
     SCAN_DETECTION_MARGIN = 0
-    LASER_OFFSET_MM = 35 # this value is negative what it should be # update() returns LIDAR unit position
+    LASER_OFFSET_MM = 35 # this value is distance backwards from center of turning # update() actually returns LIDAR unit position
     Laser.__init__(self, \
                    self.SCAN_SIZE, \
                    self.SCAN_RATE_HZ, \
