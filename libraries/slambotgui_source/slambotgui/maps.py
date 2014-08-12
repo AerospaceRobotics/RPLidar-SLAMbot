@@ -50,8 +50,9 @@ class DataMatrix:
     self.mm2pix = MAP_RES_PIX_PER_M/1000.0 # [pix/mm]
 
     self.mapMatrix = np.empty((self.mapSize_pix, self.mapSize_pix), dtype=np.uint8) # initialize data matrix
-    self.mapMatrix.fill(255)
+    self.mapMatrix.fill(255) # start out white
     self.insetMatrix = np.empty((self.insetSize_pix, self.insetSize_pix), dtype=np.uint8) # initialize inset matrix
+    self.insetMatrix.fill(255) # start out white
     self.trajectory = [] # robot location history, in pixels
     self.robot_init = () # x [mm], y [mm], th [deg], defined from lower-left corner of map
     self.robot_abs = () # current robot location

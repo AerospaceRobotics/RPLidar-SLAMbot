@@ -37,15 +37,16 @@ elif sys.version_info[0] == 3:
   from tkinter.messagebox import askokcancel
 from slambotgui.maps import DataMatrix
 from slambotgui.slams import Slam
-from slambotgui.guis import MatplotlibMaps, StatusButtons
+from slambotgui.guis import RegionFrame, InsetFrame, StatusFrame
 from slambotgui.components import DaguRover5, RPLIDAR
 paddedStr = lambda inStr, length: '{0: <{width}s}'.format(inStr, width=length)[0:length] if length != 0 else inStr
 
 # User preferences
 INTERNAL_MAP = True
-FAST_MAPPING = True
-logName = os.path.join('examples','data_6AUG14_16m.log')
-dataFile = open(logName, 'r')
+FAST_MAPPING = False
+logFileName = 'data_6AUG14_16m.log'
+logFilePath = os.path.join('examples',logFileName)
+logFile = open(logFilePath, 'r')
 if FAST_MAPPING: from slambotgui.cvslamshow import SlamShow # uses OpenCV
 
 # SLAM preferences
@@ -107,8 +108,8 @@ class App:
     self.laser = RPLIDAR(DIST_MIN, DIST_MAX)
 
     # get data from log file
-    self.fileIndex = 0
-    self.fileContents = [[int(el) for el in rawline.split(' ')] for rawline in dataFile.read().strip().split('\n')]
+    self.logFileIndex = 0
+    self.logFileContents = [[int(el) for el in rawline.split(' ')] for rawline in logFile.read().strip().split('\n')]
 
     # initialize root variables
     self.statusStr = StringVar() # status of serThread
@@ -121,18 +122,22 @@ class App:
 
     if FAST_MAPPING:
       # create the OpenCV window
-      self.outFrame = SlamShow(CV_IMG_SIZE, CV_IMG_RES_PIX_PER_MM, 'SLAM Rover: Hit ESC to quit')
-      # create Tkinter control bar
-      self.inFrame = StatusButtons(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr)
+      self.regionFrame = SlamShow(CV_IMG_SIZE, CV_IMG_RES_PIX_PER_MM, 'SLAM Rover: Hit ESC to quit')
+      # create Tkinter control frames
+      self.statusFrame = StatusFrame(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr, twoLines=True)
+      self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(), **KWARGS)
       # pack frame
-      self.inFrame.pack()
+      self.statusFrame.pack(side='bottom', fill='x')
+      self.insetFrame.pack(side='left', fill='both', expand=True)
     else:
       # create all the pretty stuff in the Tkinter window
-      self.outFrame = MatplotlibMaps(self.master, self.data.getMapMatrix(), self.data.getInsetMatrix(), **KWARGS)
-      self.inFrame = StatusButtons(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr)
+      self.statusFrame = StatusFrame(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr)
+      self.regionFrame = RegionFrame(self.master, self.data.getMapMatrix(), **KWARGS)
+      self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(), **KWARGS)
       # pack frames
-      self.outFrame.pack(side="top", fill='both', expand=True)
-      self.inFrame.pack(side="left", fill='x', expand=True)
+      self.statusFrame.pack(side='bottom', fill='x')
+      self.regionFrame.pack(side='left', fill='both', expand=True)
+      self.insetFrame.pack(side='right', fill='both', expand=True)
 
     # Start loops
     self.updateData() # pull data from queue, put into data matrix
@@ -153,7 +158,7 @@ class App:
       self.master.after(1000, lambda: self.restartAll(funcStep=1)) # let processor wrap things up elsewhere # should be smarter
       return
     elif funcStep == 1:
-      self.fileIndex = 0 # read from beginning of log file
+      self.logFileIndex = 0 # read from beginning of log file
       self.data = DataMatrix(**KWARGS)
       self.slam = Slam(self.robot, self.laser, **KWARGS)
       self.restarting = False
@@ -169,17 +174,17 @@ class App:
     self.paused = False
 
   def getScanData(self, repeat=False):
-    scan = self.fileContents[self.fileIndex]
+    scan = self.logFileContents[self.logFileIndex]
 
     self.slam.currEncPos = scan[0:3]
     self.points = [point for point in zip(scan[3:], range(self.laser.SCAN_SIZE))] # distance, angle tuples
 
-    self.fileIndex += 1
+    self.logFileIndex += 1
 
   def updateData(self, init=True):
     self.dataInit = init
-    if not self.paused and self.fileIndex < len(self.fileContents):
-      self.statusStr.set('Scan number: {0:4d} of file "{1:s}"'.format(self.fileIndex, logName))
+    if not self.paused and self.logFileIndex < len(self.logFileContents):
+      self.statusStr.set('Scan number {0:4d} from {1:s}'.format(self.logFileIndex, logFileName))
 
       # pull data from log file
       self.getScanData()
@@ -192,7 +197,7 @@ class App:
 
       if init: init = False # initial data gathered successfully
 
-    elif self.fileIndex >= len(self.fileContents):
+    elif self.logFileIndex >= len(self.logFileContents):
       self.statusStr.set(paddedStr("End of data.", len(self.statusStr.get())))
 
     if not self.restarting: self.master.after(DATA_RATE, lambda: self.updateData(init=init))
@@ -203,19 +208,21 @@ class App:
       if INTERNAL_MAP:
         # draw map using slam data # 16ms
         self.data.drawBreezyMap(self.slam.getBreezyMap())
+
       if FAST_MAPPING:
-        # Display map and robot position, quitting on ESC
-        self.outFrame.displayMap(self.data.getMapArray((CV_IMG_SIZE,CV_IMG_SIZE)))
-        self.outFrame.displayRobot(self.data.get_robot_abs())
-        if self.outFrame.refresh() == 27: self.closeWin()
+        self.data.drawInset() # new relative map # 7ms
+        self.insetFrame.updateMap(self.data.get_robot_rel(), self.data.getInsetMatrix()) # 25ms
+        self.regionFrame.displayMap(self.data.getMapArray((CV_IMG_SIZE,CV_IMG_SIZE))) # 36ms
+        self.regionFrame.displayRobot(self.data.get_robot_abs())
+        if self.regionFrame.refresh() == 27: self.closeWin() # ESC key pressed
       else:
-        # Update display frame with new map
-        self.data.drawInset() # new relative map # 6ms
-        self.outFrame.updateMaps(self.data.get_robot_rel(), self.data.getMapMatrix(), self.data.getInsetMatrix())
+        self.data.drawInset() # new relative map # 7ms
+        self.insetFrame.updateMap(self.data.get_robot_rel(), self.data.getInsetMatrix())
+        self.regionFrame.updateMap(self.data.get_robot_rel(), self.data.getMapMatrix())
     if loop and not self.restarting: self.master.after(MAP_RATE, self.updateMap)
 
 
 if __name__ == '__main__':
   print(GPL)
   main()
-  dataFile.close()
+  logFile.close()

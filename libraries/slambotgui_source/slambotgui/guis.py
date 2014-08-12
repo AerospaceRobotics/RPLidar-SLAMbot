@@ -26,74 +26,130 @@ elif version_info[0] == 3: import tkinter as tk
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
-from matplotlib.gridspec import GridSpec
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 VIEW_SIZE_M = 6.0 # default size of region to be shown in display [m]
+DPI = 132.2 # calculated from $ xrandr
+CMAP = plt.get_cmap('gray') # opposite of "binary"
 
-class MatplotlibMaps(tk.Frame): # tkinter frame, inheriting from the tkinter Frame class
+
+def drawMarker(ax, pos, temporary=True):
+  return ax.plot(pos[0]/1000, pos[1]/1000, markersize=8, color='red', marker=(3,1,-pos[2]), markeredgewidth=0, aa=False)
+
+def removeMarkers(markers):
+  for i in range(len(markers)):
+    markers[i].remove()
+    del markers[i]
+
+
+class RegionFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame class
   # init            draws all fields in the output frame of the main App
   # updateMaps      draws all map data onto the matplotlib figures
   # removeMarkers   deletes all temporary markers on the main map (old robot position)
   # drawMarker      draws robot on main map using matplotlib marker
 
-  def __init__(self, master, mapMatrix, insetMatrix, MAP_SIZE_M=8, INSET_SIZE_M=2, **unused):
-    tk.Frame.__init__(self, master, bd=5, relief='sunken') # explicitly initialize base class and create window
+  def __init__(self, master, mapMatrix, MAP_SIZE_M=8, **unused):
+    tk.Frame.__init__(self, master) # explicitly initialize base class and create window
     self.markers = [] # current matplotlib markers
 
     # current (and only) figure
-    self.fig = plt.figure(figsize=(9, 5), dpi=131.2, facecolor=self.master.cget('bg')) # create matplotlib figure (dpi calculated from $ xrandr)
-    gs = GridSpec(1,3) # layout of plots in figure
-
-    # plot color settings
-    cmap = plt.get_cmap('gray') # opposite of "binary"
+    self.fig = plt.figure(figsize=(5, 5), dpi=DPI, facecolor=self.master.cget('bg')) # create matplotlib figure
 
     # subplot 1 (stationary map)
-    self.ax1 = plt.subplot(gs[0,:2]) # add plot 1 to figure
-    self.ax1.set_title("Region Map") # name and label plot
-    self.ax1.set_xlabel("X Position [mm]")
-    self.ax1.set_ylabel("Y Position [mm]")
-    self.myImg1 = self.ax1.imshow(mapMatrix, interpolation="none", cmap=cmap, vmin=0, vmax=255, # plot data
+    self.ax = plt.subplot(111) # add plot 1 to figure
+    self.ax.set_title("Region Map") # name and label plot
+    self.ax.set_xlabel("X Position [m]")
+    self.ax.set_ylabel("Y Position [m]")
+    self.myImg = self.ax.imshow(mapMatrix, interpolation="none", cmap=CMAP, vmin=0, vmax=255, # plot data
               extent=[-MAP_SIZE_M/2, MAP_SIZE_M/2, -MAP_SIZE_M/2, MAP_SIZE_M/2]) # extent sets labels by matching limits to edges of matrix
-    self.ax1.set_xlim(-VIEW_SIZE_M/2, VIEW_SIZE_M/2) # pre-zoom image to defined default MAP_SIZE_M
-    self.ax1.set_ylim(-VIEW_SIZE_M/2, VIEW_SIZE_M/2)
+    self.ax.set_xlim(-VIEW_SIZE_M/2, VIEW_SIZE_M/2) # pre-zoom image to defined default MAP_SIZE_M
+    self.ax.set_ylim(-VIEW_SIZE_M/2, VIEW_SIZE_M/2)
 
     # colorbar
-    self.cbar = self.fig.colorbar(self.myImg1, orientation='vertical') # create colorbar
-
-    # subplot 2 (relative map)
-    self.ax2 = plt.subplot(gs[0,2]) # add plot 2 to figure
-    self.ax2.set_title("Robot Environs") # name and label plot
-    self.ax2.set_xlabel("", family='monospace')
-    self.myImg2 = self.ax2.imshow(insetMatrix, interpolation='none', cmap=cmap, vmin=0, vmax=255, # plot data
-              extent=[-INSET_SIZE_M/2, INSET_SIZE_M/2, -INSET_SIZE_M/2, INSET_SIZE_M/2])
-    self.drawMarker(self.ax2, (0,0,0), temporary=False) # draw permanent robot at center of inset map
+    cax = make_axes_locatable(self.ax).append_axes("right", size="3%", pad=0.05)
+    cbar = self.fig.colorbar(self.myImg, cax=cax, orientation='vertical') # create colorbar
+    cbar.ax.tick_params(labelsize=10)
 
     # do fancy stuff with tkinter and matplotlib
     self.canvas = FigureCanvasTkAgg(self.fig, master=self) # master of the fig canvas is this frame
+    self.canvas._tkcanvas.config(highlightthickness=0)
     self.canvas._tkcanvas.pack(fill='both', expand=True)
     NavigationToolbar2TkAgg(self.canvas, self)
 
-  def updateMaps(self, robotRel, mapMatrix, insetMatrix):
+  def updateMap(self, robotRel, mapMatrix):
     # send maps to image object
-    self.myImg1.set_data(mapMatrix) # 20ms
-    self.myImg2.set_data(insetMatrix) # 0.4ms
+    self.myImg.set_data(mapMatrix) # 20ms
 
     # finishing touches
-    self.removeMarkers() # delete old robot position from map
-    self.drawMarker(self.ax1, robotRel) # add new robot position to map # 0.2ms
-    self.ax2.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*robotRel))
+    removeMarkers(self.markers) # delete old robot position from map
+    marker = drawMarker(self.ax, robotRel) # add new robot position to map # 0.2ms
+    self.markers.extend(marker) # marker is a list of matplotlib.line.Line2D objects
 
     # refresh the figure
     self.canvas.draw() # 200ms
 
-  def removeMarkers(self):
-    for i in range(len(self.markers)):
-      self.markers[i].remove()
-      del self.markers[i]
 
-  def drawMarker(self, ax, pos, temporary=True):
-    marker = ax.plot(pos[0]/1000, pos[1]/1000, markersize=8, color='red', marker=(3,1,-pos[2]), markeredgewidth=0, aa=False)
-    if temporary: self.markers.extend(marker) # marker is a list of matplotlib.line.Line2D objects
+######################################################################################
+
+
+from math import atan2, degrees
+
+class InsetFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame class
+  # init            draws all fields in the output frame of the main App
+  # updateMaps      draws all map data onto the matplotlib figures
+  # removeMarkers   deletes all temporary markers on the main map (old robot position)
+  # drawMarker      draws robot on main map using matplotlib marker
+
+  def __init__(self, master, insetMatrix, sendCommand=None, INSET_SIZE_M=2, **unused):
+    tk.Frame.__init__(self, master) # explicitly initialize base class and create window
+    self.sendCommand = sendCommand
+
+    # current (and only) figure
+    self.fig = plt.figure(figsize=(3, 4.5), dpi=DPI, facecolor=self.master.cget('bg')) # create matplotlib figure
+
+    # subplot 2 (relative map)
+    self.ax = plt.subplot(111) # add plot 2 to figure
+    self.ax.set_title("Robot Environs") # name and label plot
+    self.ax.set_xlabel("", family='monospace')
+    self.myImg = self.ax.imshow(insetMatrix, interpolation='none', cmap=CMAP, vmin=0, vmax=255, # plot data
+              extent=[-INSET_SIZE_M/2, INSET_SIZE_M/2, -INSET_SIZE_M/2, INSET_SIZE_M/2])
+    self.ax.tick_params(axis='both', which='major', labelsize=12)
+    drawMarker(self.ax, (0,0,0), temporary=False) # draw permanent robot at center of inset map
+
+    # do fancy stuff with tkinter and matplotlib
+    self.canvas = FigureCanvasTkAgg(self.fig, master=self) # master of the fig canvas is this frame
+    self.canvas._tkcanvas.config(highlightthickness=0)
+    self.canvas._tkcanvas.pack(fill='both', expand=True)
+
+    # make notification string to display mouse position
+    self.notifyStr = tk.StringVar()
+    self.notifyStr.set("\n") # pre-fill to final size
+    tk.Label(self, textvariable=self.notifyStr).pack(side='bottom', fill='both')
+
+    if sendCommand:
+      self.fig.canvas.mpl_connect('button_press_event', self.onClick)
+      self.fig.canvas.mpl_connect('motion_notify_event', self.onMovement)
+
+  def onClick(self, event):
+    if event.inaxes == self.ax: # click is on inset map
+      x, y = 1000*event.xdata, 1000*event.ydata
+      ang = degrees(atan2(x,y))
+      dist = (x**2 + y**2)**0.5
+      self.sendCommand('c{0:0.1f}c{1:0.0f}'.format(ang,dist))
+
+  def onMovement(self, event):
+    if event.inaxes == self.ax: # mouse is over inset map
+      self.notifyStr.set('Mouse at: {0:0.0f}, {1:0.0f}\nClick to send robot here.'.format(1000*event.xdata,1000*event.ydata))
+
+  def updateMap(self, robotRel, insetMatrix):
+    # send maps to image object
+    self.myImg.set_data(insetMatrix) # 0.4ms
+
+    # finishing touches
+    self.ax.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*robotRel))
+
+    # refresh the figure
+    self.canvas.draw() # 200ms
 
 
 ######################################################################################
@@ -105,43 +161,50 @@ elif version_info[0] == 3: from tkinter.font import Font
 CMD_RATE = 100 # minimum time between auto-send commands [ms]
 MAX_TX_TRIES = 3 # max number of times to try to resend command before giving up
 
-class EntryButtons(tk.Frame):
-  # sendCommand     triggered by request to manually send the command in the text box
+class EntryFrame(tk.Frame):
+  # sendCommand     send string to command entry box, identical to typing command and hitting Send/<Return>
+  # manualSend      triggered by request to manually send the command in the text box
   # autoSendCommand loop to control sending of commands, including automatic retries and continuous drive commands
 
-  def __init__(self, master, robot, closeWin, restartAll, saveImage, getACK, resetACK, TXQueue, statusStr):
-    tk.Frame.__init__(self, master, bd=5, relief='sunken') # explicitly initialize base class and create window
+  def __init__(self, master, robot, closeWin, restartAll, saveImage, getACK, resetACK, TXQueue, statusStr, twoLines=False):
+    tk.Frame.__init__(self, master) # explicitly initialize base class and create window
     self.master = master
 
-    self.sendingCommand = False # are we trying to manually send a command?
-    self.CMDS = {'v':{'prop':"speed 0..255", 'func':lambda x: str(x)                        }, # send motor speed as given
-                 'w':{'prop':"forward mm",   'func':lambda x: str(int(robot.MM_2_TICK*x))   }, # convert mm to ticks
-                 'a':{'prop':"left deg",     'func':lambda x: str(int(robot.DEG_2_TICK*x))  }, # convert degrees to ticks
-                 's':{'prop':"reverse mm",   'func':lambda x: str(int(robot.MM_2_TICK*x))   }, # convert mm to ticks
-                 'd':{'prop':"right deg",    'func':lambda x: str(int(robot.DEG_2_TICK*x))  }} # convert degrees to ticks
+    self.manualSending = False # are we trying to manually send a command?
+    self.CMDS = {'v':{'prop':"speed 0..255",'func':lambda x: str(x)                       }, # send motor speed as given
+                 'w':{'prop':"forward mm",  'func':lambda x: str(int(robot.MM_2_TICK*x))  }, # convert mm to ticks
+                 'a':{'prop':"left deg",    'func':lambda x: str(int(robot.DEG_2_TICK*x)) }, # convert degrees to ticks
+                 's':{'prop':"reverse mm",  'func':lambda x: str(int(robot.MM_2_TICK*x))  }, # convert mm to ticks
+                 'd':{'prop':"right deg",   'func':lambda x: str(int(robot.DEG_2_TICK*x)) }} # convert degrees to ticks
 
     self.closeWin, self.restartAll, self.saveImage, self.getACK, self.resetACK, self.TXQueue, self.statusStr \
       =  closeWin,      restartAll,      saveImage,      getACK,      resetACK,      TXQueue, statusStr
 
 
     # create buttons
-    tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5) # tkinter interrupt function
-    tk.Button(self, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5) # tkinter interrupt function
-    tk.Label(self, text="Command: ").pack(side="left")
-    self.entryBox = tk.Entry(master=self, width=15)
-    self.entryBox.pack(side="left", padx = 5)
-    tk.Button(self, text="Send (enter)", command=self.sendCommand).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
     monospaceFont = Font(family="Courier", weight='bold', size=12)
-    tk.Label(self, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
-    tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5) # tkinter interrupt function
+    tk.Label(self, textvariable=self.statusStr, font=monospaceFont).pack(side="bottom" if twoLines else "right", pady=5)
+
+    tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", pady=5) # tkinter interrupt function
+    tk.Button(self, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT) # tkinter interrupt function
+    self.entryBox = tk.Entry(master=self, width=15, font=monospaceFont)
+    self.entryBox.insert(0, "Command")
+    self.entryBox.pack(side="left")
+    tk.Button(self, text="Send (enter)", command=self.manualSend).pack(side=tk.LEFT) # tkinter interrupt function
+    tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT) # tkinter interrupt function
 
     # bind keyboard inputs to functions
     master.bind('<Escape>', lambda event: self.closeWin()) # escape exits program after prompt
     master.bind('<Shift-R>', lambda event: self.restartAll()) # shift and capital R does a soft reset
-    self.entryBox.bind('<Return>', lambda event: self.sendCommand()) # enter sends the command in the command box
+    self.entryBox.bind('<Return>', lambda event: self.manualSend()) # enter sends the command in the command box
 
-  def sendCommand(self):
-    self.sendingCommand = True
+  def sendCommand(self, command):
+    self.entryBox.delete(0,"end")
+    self.entryBox.insert(0,command)
+    self.manualSend()
+
+  def manualSend(self):
+    self.manualSending = True
 
   def autosendCommand(self, numTries=0, wantACK=False, strIn='', strOut=''):
     # expecting ACK from Arduino (only for value-setting commands in 'vwasd')
@@ -170,18 +233,29 @@ class EntryButtons(tk.Frame):
         self.TXQueue.put(strIn[0])
 
       # manual-send
-      elif self.sendingCommand:
+      elif self.manualSending:
         command = strIn[0]
         if command in list(self.CMDS): # we're giving the robot a value for a command
           try:
-            num = int(strIn[1:])
+            num = float(strIn[1:])
           except ValueError:
             self.entryBox.delete(1,"end")
             self.entryBox.insert(1,"[{}]".format(self.CMDS[command]['prop'])) # prompt user with proper command format
             self.entryBox.selection_range(1,'end')
           else:
             wantACK = True # start resending the command if it isn't received
-            strOut = command + self.CMDS[command]['func'](num) # re-create command with converted values
+            strOut = command + self.CMDS[command]['func'](num) + command # re-create command with converted values (and terminate)
+            self.TXQueue.put(strOut)
+        elif command == 'c': # we're giving the robot a compound command
+          try:
+            ang, dist = [float(val) for val in strIn[1:].split('c')]
+          except ValueError:
+            self.entryBox.delete(1,"end")
+            self.entryBox.insert(1,"[theta]c[dist]") # prompt user with proper command format
+            self.entryBox.selection_range(1,'end')
+          else:
+            wantACK = True
+            strOut = command + self.CMDS['d']['func'](ang) + 'c' + self.CMDS['w']['func'](dist) + command
             self.TXQueue.put(strOut)
         else: # otherwise send only first character
           self.TXQueue.put(command)
@@ -190,7 +264,7 @@ class EntryButtons(tk.Frame):
       else:
         pass # wait until manual-send for other commands
     
-    self.sendingCommand = False # reset manual sending
+    self.manualSending = False # reset manual sending
     self.master.after(CMD_RATE, lambda: self.autosendCommand(numTries=numTries, wantACK=wantACK, strIn=strIn, strOut=strOut))
 
 
@@ -200,11 +274,8 @@ class EntryButtons(tk.Frame):
 if version_info[0] == 2: from tkFont import Font
 elif version_info[0] == 3: from tkinter.font import Font
 
-class StatusButtons(tk.Frame):
-  # sendCommand     triggered by request to manually send the command in the text box
-  # autoSendCommand loop to control sending of commands, including automatic retries and continuous drive commands
-
-  def __init__(self, master, closeWin, restartAll, saveImage, statusStr):
+class StatusFrame(tk.Frame):
+  def __init__(self, master, closeWin, restartAll, saveImage, statusStr, twoLines=False):
     tk.Frame.__init__(self, master, bd=5, relief='sunken') # explicitly initialize base class and create window
     self.master = master
 
@@ -212,11 +283,12 @@ class StatusButtons(tk.Frame):
       =  closeWin,      restartAll,      saveImage, statusStr
 
     # create buttons
-    tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", padx=5, pady=5)
-    tk.Button(self, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT, padx = 5)
     monospaceFont = Font(family="Courier", weight='bold', size=12)
-    tk.Label(self, textvariable=self.statusStr, font=monospaceFont).pack(side="left", padx=5, pady=5)
-    tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT, padx=5)
+    tk.Label(self, textvariable=self.statusStr, font=monospaceFont).pack(side="bottom" if twoLines else "right", pady=5)
+
+    tk.Button(self, text="Quit (esc)", command=self.closeWin).pack(side="left", pady=5)
+    tk.Button(self, text="Restart (R)", command=self.restartAll).pack(side=tk.LEFT)
+    tk.Button(self, text="Save Map", command=self.saveImage).pack(side=tk.LEFT)
 
     # bind keyboard inputs to functions
     master.bind('<Escape>', lambda event: self.closeWin()) # escape exits program after prompt

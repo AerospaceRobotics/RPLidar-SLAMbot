@@ -42,17 +42,18 @@ elif sys.version_info[0] == 3:
 from slambotgui.maps import DataMatrix
 from slambotgui.slams import Slam
 from slambotgui.comms import SerialThread
-from slambotgui.guis import MatplotlibMaps, EntryButtons
+from slambotgui.guis import RegionFrame, InsetFrame, EntryFrame
 from slambotgui.components import DaguRover5, RPLIDAR
 paddedStr = lambda inStr, length: '{0: <{width}s}'.format(inStr, width=length)[0:length] if length != 0 else inStr
 
 # User preferences
 INTERNAL_MAP = True
-FAST_MAPPING = True
-LOG_ALL_DATA = True
-logName = os.path.join('examples','test.log')
-if LOG_ALL_DATA: dataFile = open(logName, 'w')
-else: dataFile = None
+FAST_MAPPING = False
+LOG_ALL_DATA = False
+logFileName = 'test.log'
+logFilePath = os.path.join('examples',logFileName)
+if LOG_ALL_DATA: logFile = open(logFilePath, 'w')
+else: logFile = None
 if FAST_MAPPING: from slambotgui.cvslamshow import SlamShow # uses OpenCV
 
 # SLAM preferences
@@ -81,7 +82,7 @@ MAP_DEPTH = 5 # depth of data points on map (levels of certainty)
 print("Each pixel is " + str(round(1000.0/MAP_RES_PIX_PER_M,1)) + "mm, or " + str(round(1000.0/MAP_RES_PIX_PER_M/25.4,2)) + "in.")
 
 KWARGS, gvars = {}, globals()
-for var in ['dataFile','MAP_SIZE_M','INSET_SIZE_M','MAP_RES_PIX_PER_M','MAP_DEPTH','USE_ODOMETRY','MAP_QUALITY']:
+for var in ['logFile','MAP_SIZE_M','INSET_SIZE_M','MAP_RES_PIX_PER_M','MAP_DEPTH','USE_ODOMETRY','MAP_QUALITY']:
   KWARGS[var] = gvars[var] # constants required in modules
 
 
@@ -103,6 +104,7 @@ class App:
   # closeWin        first prompts the user if they really want to close, then ends serial thread and tkinter
   # resetAll        restarts all objects that store map data, allowing history to be wiped without hard reset
   # saveImage       tells data object to capture the current map and save as a png
+  # sendCommand     passes control info from inset display to main App for processing
   # getScanData     pulls LIDAR data directly from the serial port and does preliminary processing
   # updateData      calls getScanData, and updates the slam object and data matrix with this data, and loops to itself
   # updateMap       draws a new map, using whatever data is available, and loops to itself
@@ -134,26 +136,30 @@ class App:
 
     if FAST_MAPPING:
       # create the OpenCV window
-      self.outFrame = SlamShow(MAP_SIZE_PIXELS, MAP_RES_PIX_PER_M/1000.0, 'SLAM Rover: Hit ESC to quit')
-      # create Tkinter control bar
-      self.inFrame = EntryButtons(self.master, self.robot, self.closeWin, self.restartAll, self.saveImage, \
-                                  self.serThread.getACK, self.serThread.resetACK, self.TXQueue, self.statusStr)
+      self.regionFrame = SlamShow(CV_IMG_SIZE, CV_IMG_RES_PIX_PER_MM, 'SLAM Rover: Hit ESC to quit')
+      # create Tkinter control frames
+      self.statusFrame = EntryFrame(self.master, self.robot, self.closeWin, self.restartAll, self.saveImage, \
+                                    self.serThread.getACK, self.serThread.resetACK, self.TXQueue, self.statusStr, twoLines=True)
+      self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(), sendCommand=self.statusFrame.sendCommand, **KWARGS)
       # pack frame
-      self.inFrame.pack()
+      self.statusFrame.pack(side='bottom', fill='x')
+      self.insetFrame.pack(side='left', fill='both', expand=True)
     else:
       # create all the pretty stuff in the Tkinter window
-      self.outFrame = MatplotlibMaps(self.master, self.data.getMapMatrix(), self.data.getInsetMatrix(), **KWARGS)
-      self.inFrame = EntryButtons(self.master, self.robot, self.closeWin, self.restartAll, self.saveImage, \
-                                  self.serThread.getACK, self.serThread.resetACK, self.TXQueue, self.statusStr)
+      self.statusFrame = EntryFrame(self.master, self.robot, self.closeWin, self.restartAll, self.saveImage, \
+                                    self.serThread.getACK, self.serThread.resetACK, self.TXQueue, self.statusStr)
+      self.regionFrame = RegionFrame(self.master, self.data.getMapMatrix(), **KWARGS)
+      self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(), sendCommand=self.statusFrame.sendCommand, **KWARGS)
       # pack frames
-      self.outFrame.pack(side="top", fill='both', expand=True)
-      self.inFrame.pack(side="left", fill='x', expand=True)
+      self.statusFrame.pack(side='bottom', fill='x')
+      self.regionFrame.pack(side='left', fill='both', expand=True)
+      self.insetFrame.pack(side='right', fill='both', expand=True)
 
     # Start loops
     self.serThread.start() # begin fetching data from serial port and processing it
     self.updateData() # pull data from queue, put into data matrix
     self.updateMap() # draw new data matrix
-    self.inFrame.autosendCommand() # check for user input and automatically send it
+    self.statusFrame.autosendCommand() # check for user input and automatically send it
 
   def closeWin(self):
     self.paused = True
@@ -232,19 +238,21 @@ class App:
       if INTERNAL_MAP:
         # draw map using slam data # 16ms
         self.data.drawBreezyMap(self.slam.getBreezyMap())
+
       if FAST_MAPPING:
-        # Display map and robot position, quitting on ESC
-        self.outFrame.displayMap(self.data.getMapArray((CV_IMG_SIZE,CV_IMG_SIZE)))
-        self.outFrame.displayRobot(self.data.get_robot_abs())
-        if self.outFrame.refresh() == 27: self.closeWin()
+        self.data.drawInset() # new relative map # 7ms
+        self.insetFrame.updateMap(self.data.get_robot_rel(), self.data.getInsetMatrix()) # 25ms
+        self.regionFrame.displayMap(self.data.getMapArray((CV_IMG_SIZE,CV_IMG_SIZE))) # 36ms
+        self.regionFrame.displayRobot(self.data.get_robot_abs())
+        if self.regionFrame.refresh() == 27: self.closeWin() # ESC key pressed
       else:
-        # Update display frame with new map
-        self.data.drawInset() # new relative map # 6ms
-        self.outFrame.updateMaps(self.data.get_robot_rel(), self.data.getMapMatrix(), self.data.getInsetMatrix())
+        self.data.drawInset() # new relative map # 7ms
+        self.insetFrame.updateMap(self.data.get_robot_rel(), self.data.getInsetMatrix())
+        self.regionFrame.updateMap(self.data.get_robot_rel(), self.data.getMapMatrix())
     if loop and not self.restarting: self.master.after(MAP_RATE, self.updateMap)
 
 
 if __name__ == '__main__':
   print(GPL)
   main()
-  if LOG_ALL_DATA: dataFile.close()
+  if LOG_ALL_DATA: logFile.close()

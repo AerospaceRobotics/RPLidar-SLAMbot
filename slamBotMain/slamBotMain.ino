@@ -87,7 +87,8 @@ int bufferIndex = 0; // where in the software buffer are we?
 byte softBuffer[BUF_SIZE] = {}; // store points to send in BUF_LEN-packet bursts
 
 // State variable initialization
-bool updatingDriving = false; // Should we use encoders to verify drive goal?
+bool updatingDriving1 = false; // Should we use encoders to verify drive goal?
+bool updatingDriving2 = false; // Should we use encoders to verify drive goal again?
 bool sleeping = false; // Do nothing except check for wake up command
 bool runLIDAR = false; // Do stuff with LIDAR?
 bool heartState = false; // Current state of heartbeat LED
@@ -101,6 +102,7 @@ int straightDist = 350; // encoder ticks for each wheel when going straight (~0.
 int AMPLITUDE = 159;
 int lGoal = 0;
 int rGoal = 0;
+int goalNext = 0; // second step in a compound command is always straight ahead
 int candidate;
 char inChar;
 char inCmd[10] = {};
@@ -125,7 +127,7 @@ void setup() {
   if(debugXBee) { pcSer.begin(XBEE_BAUD); } // if connected to computer, assume talking to XBee // 'if' broken
   lidar.begin(lidarSer); // bind RPLIDAR driver to arduino Serial2
   xbeeSer.begin(XBEE_BAUD); // initialize communication with xBee
-  xbeeSer.setTimeout(5); // used by parseInt()
+  xbeeSer.setTimeout(5);
 
   for (int i=0; i<sizeof(outPins)/sizeof(i); i++) {
     pinMode(outPins[i],OUTPUT);
@@ -143,7 +145,7 @@ void loop() { // 16us
   if(millis()>nextBeat) {
     beatHeart(heartState); nextBeat += beatDuration; // 16us
     readEncoders();
-    if(updatingDriving) { updateDriving(); } // 64us
+    if(updatingDriving1 or updatingDriving2) { updateDriving(); } // 64us
   }
 
   if(runLIDAR) {
@@ -223,10 +225,18 @@ void driveRight(const int & rspeed) {
   analogWrite(RIGHT_ENABLE, abs(rspeed)>255?255:abs(rspeed)); // Writes speed to pin
 }
 void updateDriving() { // keep relative wheel distance traveled as close to goal as possible
-  if(abs(leftWheelTemp) > abs(lGoal) or abs(rightWheelTemp) > abs(rGoal)) {zeroMotors(); updatingDriving = false; return;}
-  driveError = straightness * (sgn(lGoal)*leftWheelTemp - sgn(rGoal)*rightWheelTemp);
-  driveLeft(sgn(lGoal)*(AMPLITUDE - driveError));
-  driveRight(sgn(rGoal)*(AMPLITUDE + driveError));
+  if(abs(leftWheelTemp) >= abs(lGoal) or abs(rightWheelTemp) >= abs(rGoal)) { // done with command
+    zeroMotors(); // stop motors
+    if(updatingDriving2) { // is there a second command?
+      zeroEncoders(); lGoal = goalNext; rGoal = goalNext; // only matters if just finished first command
+      updatingDriving2 = updatingDriving1; // only matters if just finished second command
+    }
+    updatingDriving1 = false; // done with first command
+  } else { // not done with command
+    driveError = straightness * (sgn(lGoal)*leftWheelTemp - sgn(rGoal)*rightWheelTemp);
+    driveLeft(sgn(lGoal)*(AMPLITUDE - driveError));
+    driveRight(sgn(rGoal)*(AMPLITUDE + driveError));
+  }
 }
 void zeroMotors() {
   driveLeft(0);
@@ -257,20 +267,26 @@ void zeroEncodersAbs() {
 // Keyboard Control
 void checkXBeeInput() {
   inChar = xbeeSer.read();
-  if(sleeping && inChar != 'x') { return; } // sleeping only responds to command to wake up
+  if(sleeping and inChar != 'x') { return; } // sleeping only responds to command to wake up
 
   goal = 0;
-  if(inChar == 'w' or inChar == 'a' or inChar == 's' or inChar == 'd') {
+  if(inChar == 'c') {
     zeroEncoders(); // reset the encoders in preparation for a new driving command
-    updatingDriving = true; // tell main loop to monitor driving status
-    goal = xbeeSer.parseInt(); // get associated value // returns 0 if no int found after 2ms
+    updatingDriving1 = true; updatingDriving2 = true; // tell main loop to monitor driving status
+    goal = xbeeSer.parseInt(); xbeeSer.read(); // get angle and clear separator
+    goalNext = xbeeSer.parseInt(); xbeeSer.read(); // get distance and clear terminator
+    for(int i=0; i<PKT_SIZE; i++) { xbeeSer.write(ENC_FLAG); } // command received, send ACK
+  } else if(inChar == 'w' or inChar == 'a' or inChar == 's' or inChar == 'd') {
+    zeroEncoders(); // reset the encoders in preparation for a new driving command
+    updatingDriving1 = true; // tell main loop to monitor driving status
+    goal = xbeeSer.parseInt(); xbeeSer.read(); // get associated value and clear terminator
     for(int i=0; i<PKT_SIZE; i++) { xbeeSer.write(ENC_FLAG); } // command received, send ACK
   } else if(inChar == 'W' or inChar == 'A' or inChar == 'S' or inChar == 'D') {
     zeroEncoders(); // reset the encoders in preparation for a new driving command
-    updatingDriving = true; // tell main loop to monitor driving status
-  } else if(updatingDriving) { // if currently driving, but not requested to continue driving
+    updatingDriving1 = true; // tell main loop to monitor driving status
+  } else if(updatingDriving1 or updatingDriving2) { // currently driving, not requested to continue driving
     zeroMotors(); // stop motors
-    updatingDriving = false; // stop monitoring of driving status
+    updatingDriving1 = false; updatingDriving2 = false; // stop monitoring of driving status
   }
 
   if(inChar == 'x') {runLIDAR = false; sleeping = !sleeping; beatDuration = sleeping?1000:50;
@@ -278,6 +294,7 @@ void checkXBeeInput() {
   } else if(inChar == 'l') { runLIDAR = true; bufferIndex = 0; zeroEncodersAbs();
   } else if(inChar == 'o') { runLIDAR = false;
 
+  } else if(inChar == 'c') { lGoal = goal; rGoal = -goal; // goal is to the right (can be negative -> left)
   } else if(inChar == 'w') { lGoal = goal; rGoal = goal;
   } else if(inChar == 'a') { lGoal = -goal; rGoal = goal;
   } else if(inChar == 's') { lGoal = -goal; rGoal = -goal;
@@ -288,7 +305,8 @@ void checkXBeeInput() {
   } else if(inChar == 'D') { lGoal = turnDist; rGoal = -turnDist;
 
   } else if(inChar == 'v') {
-    candidate = xbeeSer.parseInt();
+    candidate = xbeeSer.parseFloat();
+    xbeeSer.read(); // clear terminator
     if( candidate>=0 && candidate<=255 ) { AMPLITUDE = candidate; }
     for(int i=0; i<PKT_SIZE; i++) { xbeeSer.write(ENC_FLAG); } // command received, send ACK
   }
