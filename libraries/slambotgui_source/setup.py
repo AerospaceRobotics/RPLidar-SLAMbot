@@ -21,12 +21,14 @@
 from distutils.core import setup, Extension
 
 setup(name = 'SLAMBotGUI',
-      version = '0.1',
+      version = '0.2',
       description = 'GUI supporting SLAM-enabled robot platform',
       packages = ['slambotgui'],
+      scripts=['readLogData.py'],
       author='Michael Searing and William Warner',
       author_email='michael.searing@students.olin.edu',
       url='http://aerospacerobotics.com',
+      download_url='https://github.com/AerospaceRobotics/RPLidar-SLAMbot',
       license='LGPL',
       platforms='Linux; Windows',
       long_description = 'Classes for custom serial protocol and graphical representation of data'

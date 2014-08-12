@@ -1,0 +1,12 @@
+readLogData.py
+examples/data_1AUG14_30m.log
+examples/data_24JUL14_14m.log
+examples/data_6AUG14_16m.log
+setup.py
+slambotgui/__init__.py
+slambotgui/comms.py
+slambotgui/components.py
+slambotgui/cvslamshow.py
+slambotgui/guis.py
+slambotgui/maps.py
+slambotgui/slams.py
