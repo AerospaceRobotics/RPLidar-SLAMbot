@@ -18,10 +18,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from sys import version_info
-
-if version_info[0] == 2: from Queue import Empty as QueueEmpty
-elif version_info[0] == 3: from queue import Empty as QueueEmpty
+from tools import bits2mask, PYTHON_SERIES
+if PYTHON_SERIES == 2: from Queue import Empty as QueueEmpty
+elif PYTHON_SERIES == 3: from queue import Empty as QueueEmpty
 import sys
 from threading import Thread, Event # allow serial checking to happen on top of tkinter interface things
 from serial import Serial
@@ -29,9 +28,7 @@ from serial.serialutil import SerialException
 from serial.tools import list_ports # get computer's port info
 from time import time, sleep
 from struct import unpack # parse incoming serial data
-if version_info[0] == 3: raw_input = lambda inStr: input(inStr)
-
-bits2mask = lambda bitList: sum([2**el for el in bitList])
+if PYTHON_SERIES == 3: raw_input = lambda inStr: input(inStr)
 
 TALK_TO_XBEE = False
 

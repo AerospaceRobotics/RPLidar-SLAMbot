@@ -18,17 +18,11 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+from tools import coerceToRange
 from breezyslam.algorithms import RMHC_SLAM
 
 HOLE_WIDTH_MM = 200
 RANDOM_SEED = 0xabcd
-
-def coerceToRange(inNum, (lower, upper), wrapAround=False):
-  if not wrapAround: # simple coerce
-    return (upper if inNum > upper else (lower if inNum < lower else inNum))
-  else:
-    domain = upper - lower
-    return inNum - domain*((inNum-lower-1)//domain)*(inNum>upper) + domain*((upper-inNum)//domain)*(inNum<lower)
 
 class Slam(RMHC_SLAM):
   # init          creates the BreezySLAM objects needed for mapping

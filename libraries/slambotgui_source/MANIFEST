@@ -10,3 +10,4 @@ slambotgui/cvslamshow.py
 slambotgui/guis.py
 slambotgui/maps.py
 slambotgui/slams.py
+slambotgui/tools.py

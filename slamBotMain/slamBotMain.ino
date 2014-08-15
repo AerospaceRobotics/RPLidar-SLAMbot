@@ -225,7 +225,7 @@ void driveRight(const int & rspeed) {
   analogWrite(RIGHT_ENABLE, abs(rspeed)>255?255:abs(rspeed)); // Writes speed to pin
 }
 void updateDriving() { // keep relative wheel distance traveled as close to goal as possible
-  if(abs(leftWheelTemp) >= abs(lGoal) or abs(rightWheelTemp) >= abs(rGoal)) { // done with command
+  if(abs(leftWheelTemp) >= abs(lGoal)-4 or abs(rightWheelTemp) >= abs(rGoal)-4) { // done with command
     zeroMotors(); // stop motors
     if(updatingDriving2) { // is there a second command?
       zeroEncoders(); lGoal = goalNext; rGoal = goalNext; // only matters if just finished first command

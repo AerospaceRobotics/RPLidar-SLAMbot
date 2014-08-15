@@ -16,11 +16,13 @@ GNU General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License 
 along with this code.  If not, see <http://www.gnu.org/licenses/>.
 '''
+# Modified by Michael Searing under GPL
+
 
 # Robot display params
 ROBOT_COLOR_BGR                 = (0, 0, 255)
-ROBOT_HEIGHT                    = 16
-ROBOT_WIDTH                     = 10
+ROBOT_HEIGHT                    = 237
+ROBOT_WIDTH                     = 227
 
 # Scan point display params
 SCANPOINT_RADIUS                = 1
@@ -87,19 +89,19 @@ class SlamShow(object):
         cv.SetData(self.image, self.bgrbytes, self.map_size_pixels*3)
  
  
-    def displayRobot(self, (x_mm, y_mm, theta_deg), color=ROBOT_COLOR_BGR, scale=1, line_thickness=1):
+    def displayRobot(self, (x_mm, y_mm, theta_deg), scale=1, color=ROBOT_COLOR_BGR, line_thickness=1):
                         
         # Get a polyline (e.g. triangle) to represent the robot icon
         robot_points = self.robot_polyline(scale)
         
         # Rotate the polyline by the current angle
-        robot_points = map(lambda pt: rotate(pt, theta_deg), robot_points)
-        
-        # Convert the robot position from meters (up is positive) to pixels (down is positive)
-        x_pix, y_pix = self.mm2pix(x_mm), self.map_size_pixels-self.mm2pix(y_mm)
+        robot_points = map(lambda pt: rotate(pt, -theta_deg), robot_points)
                         
         # Move the polyline to the current robot position
-        robot_points = map(lambda pt: (x_pix+pt[0], y_pix+pt[1]), robot_points)
+        robot_points = map(lambda pt: (x_mm+pt[0], y_mm+pt[1]), robot_points)
+        
+        # Convert the robot position from meters (up is positive) to pixels (down is positive)
+        robot_points = map(lambda pt: (self.mm2pix(pt[0]), self.map_size_pixels-self.mm2pix(pt[1])), robot_points)
         
         # Add an icon for the robot
         cv.PolyLine(self.image, [robot_points], True, color, line_thickness) 
@@ -173,8 +175,8 @@ class SlamShow(object):
     def robot_polyline(self, scale):
         xlft = -ROBOT_WIDTH / 2 * scale
         xrgt =  ROBOT_WIDTH / 2 * scale
-        ybot =  ROBOT_HEIGHT / 2  * scale
-        ytop = -ROBOT_HEIGHT / 2 * scale
+        ybot = -ROBOT_HEIGHT / 2 * scale
+        ytop =  ROBOT_HEIGHT / 2 * scale
         return [(xrgt,ybot), (0,ytop), (xlft,ybot)]
                         
     # Converts millimeters to pixels

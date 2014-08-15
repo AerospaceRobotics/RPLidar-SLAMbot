@@ -18,28 +18,16 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from sys import version_info
-
-if version_info[0] == 2: import Tkinter as tk
-elif version_info[0] == 3: import tkinter as tk
-
-
+from tools import drawMarker, removeMarkers, PYTHON_SERIES
+if PYTHON_SERIES == 2: import Tkinter as tk
+elif PYTHON_SERIES == 3: import tkinter as tk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-VIEW_SIZE_M = 6.0 # default size of region to be shown in display [m]
+VIEW_SIZE_M = 8.0 # default size of region to be shown in display [m]
 DPI = 132.2 # calculated from $ xrandr
 CMAP = plt.get_cmap('gray') # opposite of "binary"
-
-
-def drawMarker(ax, pos, temporary=True):
-  return ax.plot(pos[0]/1000, pos[1]/1000, markersize=8, color='red', marker=(3,1,-pos[2]), markeredgewidth=0, aa=False)
-
-def removeMarkers(markers):
-  for i in range(len(markers)):
-    markers[i].remove()
-    del markers[i]
 
 
 class RegionFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame class
@@ -48,7 +36,7 @@ class RegionFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame 
   # removeMarkers   deletes all temporary markers on the main map (old robot position)
   # drawMarker      draws robot on main map using matplotlib marker
 
-  def __init__(self, master, mapMatrix, MAP_SIZE_M=8, **unused):
+  def __init__(self, master, mapMatrix, setDisplayMode=None, MAP_SIZE_M=8, **unused):
     tk.Frame.__init__(self, master) # explicitly initialize base class and create window
     self.markers = [] # current matplotlib markers
 
@@ -76,14 +64,33 @@ class RegionFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame 
     self.canvas._tkcanvas.pack(fill='both', expand=True)
     NavigationToolbar2TkAgg(self.canvas, self)
 
-  def updateMap(self, robotRel, mapMatrix):
+
+    displayModeFrame = tk.Frame(self)
+    tk.Label(displayModeFrame, text="Map display mode: ").pack(side='left')
+
+    self.setDisplayMode = setDisplayMode
+    displayMode = tk.StringVar()
+    displayMode.set('Default')
+    displayModes = {'Default': 0,
+                    'Breezy': 1,
+                    'Points': 2,
+                    'Filtered': 3,
+                    'Edges': 4,
+                    'Targets': 5,
+                    'Roads': 6}
+    options = sorted(displayModes.iterkeys(), key=lambda k: displayModes[k]) # get keys, in value order
+    tk.OptionMenu(displayModeFrame, displayMode, *options).pack(side='left')
+    displayMode.trace('w', lambda *args: self.setDisplayMode(displayModes[displayMode.get()]))
+    displayModeFrame.pack(side='bottom')
+
+  def updateMap(self, robotRel, destination, mapMatrix):
     # send maps to image object
     self.myImg.set_data(mapMatrix) # 20ms
 
     # finishing touches
     removeMarkers(self.markers) # delete old robot position from map
-    marker = drawMarker(self.ax, robotRel) # add new robot position to map # 0.2ms
-    self.markers.extend(marker) # marker is a list of matplotlib.line.Line2D objects
+    marker = drawMarker(self.ax, robotRel, destination) # add new robot position to map # 0.2ms
+    self.markers.append(marker) # marker is a list of matplotlib.line.Line2D objects
 
     # refresh the figure
     self.canvas.draw() # 200ms
@@ -100,9 +107,11 @@ class InsetFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame c
   # removeMarkers   deletes all temporary markers on the main map (old robot position)
   # drawMarker      draws robot on main map using matplotlib marker
 
-  def __init__(self, master, insetMatrix, sendCommand=None, INSET_SIZE_M=2, **unused):
+  def __init__(self, master, insetMatrix, sendCommand=None, setRelDestination=None, INSET_SIZE_M=2, **unused):
     tk.Frame.__init__(self, master) # explicitly initialize base class and create window
     self.sendCommand = sendCommand
+    self.setRelDestination = setRelDestination
+    self.markers = [] # current matplotlib markers
 
     # current (and only) figure
     self.fig = plt.figure(figsize=(3, 4.5), dpi=DPI, facecolor=self.master.cget('bg')) # create matplotlib figure
@@ -114,7 +123,6 @@ class InsetFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame c
     self.myImg = self.ax.imshow(insetMatrix, interpolation='none', cmap=CMAP, vmin=0, vmax=255, # plot data
               extent=[-INSET_SIZE_M/2, INSET_SIZE_M/2, -INSET_SIZE_M/2, INSET_SIZE_M/2])
     self.ax.tick_params(axis='both', which='major', labelsize=12)
-    drawMarker(self.ax, (0,0,0), temporary=False) # draw permanent robot at center of inset map
 
     # do fancy stuff with tkinter and matplotlib
     self.canvas = FigureCanvasTkAgg(self.fig, master=self) # master of the fig canvas is this frame
@@ -126,26 +134,30 @@ class InsetFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame c
     self.notifyStr.set("\n") # pre-fill to final size
     tk.Label(self, textvariable=self.notifyStr).pack(side='bottom', fill='both')
 
-    if sendCommand:
+    if sendCommand: # should we be able to send a command to the robot? (are we controlling the robot)
       self.fig.canvas.mpl_connect('button_press_event', self.onClick)
       self.fig.canvas.mpl_connect('motion_notify_event', self.onMovement)
 
   def onClick(self, event):
     if event.inaxes == self.ax: # click is on inset map
-      x, y = 1000*event.xdata, 1000*event.ydata
+      x, y = 1000*event.xdata, 1000*event.ydata # convert to mm for internal use
       ang = degrees(atan2(x,y))
       dist = (x**2 + y**2)**0.5
+      self.setRelDestination((x, y, 0.0))
       self.sendCommand('c{0:0.1f}c{1:0.0f}'.format(ang,dist))
 
   def onMovement(self, event):
     if event.inaxes == self.ax: # mouse is over inset map
-      self.notifyStr.set('Mouse at: {0:0.0f}, {1:0.0f}\nClick to send robot here.'.format(1000*event.xdata,1000*event.ydata))
+      self.notifyStr.set('Mouse at: {0:0.0f}mm, {1:0.0f}mm\nClick to send robot here.'.format(1000*event.xdata,1000*event.ydata))
 
-  def updateMap(self, robotRel, insetMatrix):
+  def updateMap(self, robotRel, destination, insetMatrix):
     # send maps to image object
     self.myImg.set_data(insetMatrix) # 0.4ms
 
     # finishing touches
+    removeMarkers(self.markers) # delete old robot position from map
+    marker = drawMarker(self.ax, (0,0,0), destination) # draw permanent robot at center of inset map
+    self.markers.append(marker) # marker is a list of matplotlib.line.Line2D objects
     self.ax.set_xlabel('X = {0:6.1f}; Y = {1:6.1f};\nHeading = {2:6.1f}'.format(*robotRel))
 
     # refresh the figure
@@ -155,8 +167,8 @@ class InsetFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame c
 ######################################################################################
 
 
-if version_info[0] == 2: from tkFont import Font
-elif version_info[0] == 3: from tkinter.font import Font
+if PYTHON_SERIES == 2: from tkFont import Font
+elif PYTHON_SERIES == 3: from tkinter.font import Font
 
 CMD_RATE = 100 # minimum time between auto-send commands [ms]
 MAX_TX_TRIES = 3 # max number of times to try to resend command before giving up
@@ -178,7 +190,7 @@ class EntryFrame(tk.Frame):
                  'd':{'prop':"right deg",   'func':lambda x: str(int(robot.DEG_2_TICK*x)) }} # convert degrees to ticks
 
     self.closeWin, self.restartAll, self.saveImage, self.getACK, self.resetACK, self.TXQueue, self.statusStr \
-      =  closeWin,      restartAll,      saveImage,      getACK,      resetACK,      TXQueue, statusStr
+      =  closeWin,      restartAll,      saveImage,      getACK,      resetACK,      TXQueue,      statusStr
 
 
     # create buttons
@@ -255,7 +267,7 @@ class EntryFrame(tk.Frame):
             self.entryBox.selection_range(1,'end')
           else:
             wantACK = True
-            strOut = command + self.CMDS['d']['func'](ang) + 'c' + self.CMDS['w']['func'](dist) + command
+            strOut = command + self.CMDS['d']['func'](ang) + command + self.CMDS['w']['func'](dist) + command
             self.TXQueue.put(strOut)
         else: # otherwise send only first character
           self.TXQueue.put(command)
@@ -269,10 +281,6 @@ class EntryFrame(tk.Frame):
 
 
 ######################################################################################
-
-
-if version_info[0] == 2: from tkFont import Font
-elif version_info[0] == 3: from tkinter.font import Font
 
 class StatusFrame(tk.Frame):
   def __init__(self, master, closeWin, restartAll, saveImage, statusStr, twoLines=False):

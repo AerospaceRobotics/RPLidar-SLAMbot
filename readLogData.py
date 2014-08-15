@@ -17,7 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
 GPL = "breezySLAM_XBEE.py Copyright (C) 2014 Michael Searing \n\
 This program comes with ABSOLUTELY NO WARRANTY. \n\
 This is free software, and you are welcome to redistribute it \n\
@@ -29,40 +28,41 @@ print("Python {}.{}.{}".format(*sys.version_info[0:3]))
 sys.path.append('libraries/slambotgui_source') # look in dev package
 
 # used in Root class
-if sys.version_info[0] == 2:
+from slambotgui.tools import paddedStr, PYTHON_SERIES
+if PYTHON_SERIES == 2:
   from Tkinter import Tk, StringVar
   from tkMessageBox import askokcancel
-elif sys.version_info[0] == 3:
+elif PYTHON_SERIES == 3:
   from tkinter import Tk, StringVar
   from tkinter.messagebox import askokcancel
 from slambotgui.maps import DataMatrix
 from slambotgui.slams import Slam
 from slambotgui.guis import RegionFrame, InsetFrame, StatusFrame
 from slambotgui.components import DaguRover5, RPLIDAR
-paddedStr = lambda inStr, length: '{0: <{width}s}'.format(inStr, width=length)[0:length] if length != 0 else inStr
 
 # User preferences
 INTERNAL_MAP = True
+SMARTNESS_ON = True
 FAST_MAPPING = False
-logFileName = 'data_6AUG14_16m.log'
+logFileName = 'data_1AUG14_30m.log'
 logFilePath = os.path.join('examples',logFileName)
 logFile = open(logFilePath, 'r')
 if FAST_MAPPING: from slambotgui.cvslamshow import SlamShow # uses OpenCV
 
 # SLAM preferences
 USE_ODOMETRY = True
-MAP_QUALITY = 3
+MAP_QUALITY = 7
 
 # GUI constants
-DATA_RATE = 5 # minimum time between updating data from lidar [ms]
-MAP_RATE = 100 # minimum time between updating map [ms]
+DATA_RATE = 1 # minimum time between updating data from lidar [ms]
+MAP_RATE = 250 # minimum time between updating map [ms]
 
 # Laser constants (shared with Arduino)
 DIST_MIN = 100; # minimum distance
 DIST_MAX = 6000; # maximum distance
 
 # Map constants
-MAP_SIZE_M = 20.0 # size of region to be mapped [m]
+MAP_SIZE_M = 30.0 # size of region to be mapped [m]
 INSET_SIZE_M = 2.0 # size of relative map
 MAP_RES_PIX_PER_M = 100 # number of pixels of data per meter [pix/m]
 MAP_SIZE_PIXELS = int(MAP_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the entire map
@@ -72,7 +72,7 @@ MAP_DEPTH = 5 # depth of data points on map (levels of certainty)
 print("Each pixel is " + str(round(1000.0/MAP_RES_PIX_PER_M,1)) + "mm, or " + str(round(1000.0/MAP_RES_PIX_PER_M/25.4,2)) + "in.")
 
 KWARGS, gvars = {}, globals()
-for var in ['MAP_SIZE_M','INSET_SIZE_M','MAP_RES_PIX_PER_M','MAP_DEPTH','USE_ODOMETRY','MAP_QUALITY']:
+for var in ['MAP_SIZE_M','INSET_SIZE_M','MAP_RES_PIX_PER_M','MAP_DEPTH','INTERNAL_MAP','SMARTNESS_ON','USE_ODOMETRY','MAP_QUALITY']:
   KWARGS[var] = gvars[var] # constants required in modules
 
 def main():
@@ -88,7 +88,7 @@ def main():
   root.mainloop() # start Tkinter GUI loop
 
 
-class App:
+class App(object):
   # init            creates all objects, draws initUI, and starts all loops (including serial thread)
   # closeWin        first prompts the user if they really want to close, then ends serial thread and tkinter
   # resetAll        restarts all objects that store map data, allowing history to be wiped without hard reset
@@ -101,7 +101,7 @@ class App:
     self.master = master # root tk window
     self.master.protocol("WM_DELETE_WINDOW", self.closeWin) # control what happens when a window is closed externally (e.g. by the 'x')
     self.master.wm_title("Aerospace Robotics LIDAR Viewer") # name window
-    self.master.geometry('+100+100') # position window 100,100 pixels from top-left corner
+    self.master.geometry('+100+50') # position window 100,100 pixels from top-left corner
 
     # physical objects
     self.robot = DaguRover5()
@@ -132,7 +132,7 @@ class App:
     else:
       # create all the pretty stuff in the Tkinter window
       self.statusFrame = StatusFrame(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr)
-      self.regionFrame = RegionFrame(self.master, self.data.getMapMatrix(), **KWARGS)
+      self.regionFrame = RegionFrame(self.master, self.data.getMapMatrix(), setDisplayMode=self.data.setDisplayMode, **KWARGS)
       self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(), **KWARGS)
       # pack frames
       self.statusFrame.pack(side='bottom', fill='x')
@@ -160,6 +160,7 @@ class App:
     elif funcStep == 1:
       self.logFileIndex = 0 # read from beginning of log file
       self.data = DataMatrix(**KWARGS)
+      if not FAST_MAPPING: self.regionFrame.setDisplayMode = self.data.setDisplayMode # recreate broken reference
       self.slam = Slam(self.robot, self.laser, **KWARGS)
       self.restarting = False
       self.updateData() # pull data from queue, put into data matrix
@@ -173,11 +174,11 @@ class App:
     self.data.saveImage()
     self.paused = False
 
-  def getScanData(self, repeat=False):
+  def getScanData(self):
     scan = self.logFileContents[self.logFileIndex]
 
     self.slam.currEncPos = scan[0:3]
-    self.points = [point for point in zip(scan[3:], range(self.laser.SCAN_SIZE))] # distance, angle tuples
+    self.points = zip(scan[3:], range(self.laser.SCAN_SIZE)) # distance, angle tuples
 
     self.logFileIndex += 1
 
@@ -193,7 +194,7 @@ class App:
       if init: self.slam.prevEncPos = self.slam.currEncPos # set both values the first time through
       self.data.getRobotPos(self.slam.updateSlam(self.points), init=init) # send data to slam to do stuff # 15ms
 
-      if not INTERNAL_MAP: self.data.drawMap(self.points) # draw map using scan points
+      self.data.drawPointMap(self.points) # draw map using scan points
 
       if init: init = False # initial data gathered successfully
 
@@ -205,20 +206,17 @@ class App:
 
   def updateMap(self, loop=True):
     if not self.paused and not self.dataInit: # wait until first data update to update map
-      if INTERNAL_MAP:
-        # draw map using slam data # 16ms
-        self.data.drawBreezyMap(self.slam.getBreezyMap())
+      # draw map using slam data # 16ms
+      self.data.drawBreezyMap(self.slam.getBreezyMap())
 
+      self.data.drawInset() # new relative map # 7ms
+      self.insetFrame.updateMap(self.data.get_robot_rel(), self.data.getRelDestination(), self.data.getInsetMatrix()) # 25ms
       if FAST_MAPPING:
-        self.data.drawInset() # new relative map # 7ms
-        self.insetFrame.updateMap(self.data.get_robot_rel(), self.data.getInsetMatrix()) # 25ms
         self.regionFrame.displayMap(self.data.getMapArray((CV_IMG_SIZE,CV_IMG_SIZE))) # 36ms
         self.regionFrame.displayRobot(self.data.get_robot_abs())
         if self.regionFrame.refresh() == 27: self.closeWin() # ESC key pressed
       else:
-        self.data.drawInset() # new relative map # 7ms
-        self.insetFrame.updateMap(self.data.get_robot_rel(), self.data.getInsetMatrix())
-        self.regionFrame.updateMap(self.data.get_robot_rel(), self.data.getMapMatrix())
+        self.regionFrame.updateMap(self.data.get_robot_rel(), self.data.getDestination(), self.data.getMapMatrix())
     if loop and not self.restarting: self.master.after(MAP_RATE, self.updateMap)
 
 

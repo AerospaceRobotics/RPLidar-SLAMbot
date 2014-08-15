@@ -21,7 +21,7 @@
 from numpy import pi as PI
 from math import copysign
 
-class TrackedRobot:
+class TrackedRobot(object):
   def __init__(self, REV_2_TICK, WHEEL_DIAMETER, WHEEL_BASE, WHEEL_TRACK, TREAD_ERROR):
 
     # geometry # note that revolution (REV) is when the wheel turns 360 degrees
@@ -98,7 +98,7 @@ class RPLIDAR(Laser):
     SCAN_DETECTION_ANGLE = 360
     SCAN_DISTANCE_NO_DETECTION_MM = self.DIST_MAX
     SCAN_DETECTION_MARGIN = 0
-    LASER_OFFSET_MM = 35 # this value is distance backwards from center of turning # update() actually returns LIDAR unit position
+    LASER_OFFSET_MM = -35
     Laser.__init__(self, \
                    self.SCAN_SIZE, \
                    self.SCAN_RATE_HZ, \
