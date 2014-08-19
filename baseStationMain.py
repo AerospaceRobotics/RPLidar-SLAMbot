@@ -29,32 +29,30 @@ print("Python {}.{}.{}".format(*sys.version_info[0:3]))
 sys.path.append('libraries/slambotgui_source') # look in dev package
 
 # used in Root class
-if sys.version_info[0] == 2:
+from slambotgui.tools import paddedStr, PYTHON_SERIES, askForFile
+if PYTHON_SERIES == 2:
   from Tkinter import Tk, StringVar
   from tkMessageBox import askokcancel
   from Queue import Queue
   from Queue import Empty as QueueEmpty
-elif sys.version_info[0] == 3:
+elif PYTHON_SERIES == 3:
   from tkinter import Tk, StringVar
   from tkinter.messagebox import askokcancel
   from queue import Queue
   from queue import Empty as QueueEmpty
-from slambotgui.maps import DataMatrix
+from slambotgui.dataprocessing import DataMatrix
 from slambotgui.slams import Slam
 from slambotgui.comms import SerialThread
 from slambotgui.guis import RegionFrame, InsetFrame, EntryFrame
 from slambotgui.components import DaguRover5, RPLIDAR
-paddedStr = lambda inStr, length: '{0: <{width}s}'.format(inStr, width=length)[0:length] if length != 0 else inStr
 
 # User preferences
 INTERNAL_MAP = False
 SMARTNESS_ON = False
 FAST_MAPPING = False
 LOG_ALL_DATA = False
+logFileDirectory = ['examples'] # leave as empty string in list for current directory
 logFileName = 'test.log'
-logFilePath = os.path.join('examples',logFileName)
-if LOG_ALL_DATA: logFile = open(logFilePath, 'w')
-else: logFile = None
 if FAST_MAPPING: from slambotgui.cvslamshow import SlamShow # uses OpenCV
 
 # SLAM preferences
@@ -82,9 +80,7 @@ CV_IMG_RES_PIX_PER_MM = CV_IMG_SIZE/MAP_SIZE_M/1000 # number of pixels of data p
 MAP_DEPTH = 5 # depth of data points on map (levels of certainty)
 print("Each pixel is " + str(round(1000.0/MAP_RES_PIX_PER_M,1)) + "mm, or " + str(round(1000.0/MAP_RES_PIX_PER_M/25.4,2)) + "in.")
 
-KWARGS, gvars = {}, globals()
-for var in ['logFile','MAP_SIZE_M','INSET_SIZE_M','MAP_RES_PIX_PER_M','MAP_DEPTH','INTERNAL_MAP','SMARTNESS_ON','USE_ODOMETRY','MAP_QUALITY']:
-  KWARGS[var] = gvars[var] # constants required in modules
+KWARGS_keys = ['logFile','MAP_SIZE_M','INSET_SIZE_M','MAP_RES_PIX_PER_M','MAP_DEPTH','INTERNAL_MAP','SMARTNESS_ON','USE_ODOMETRY','MAP_QUALITY']
 
 
 def main():
@@ -101,14 +97,15 @@ def main():
 
 
 class App(object):
-  # init            creates all objects, draws initUI, and starts all loops (including serial thread)
-  # closeWin        first prompts the user if they really want to close, then ends serial thread and tkinter
-  # resetAll        restarts all objects that store map data, allowing history to be wiped without hard reset
-  # saveImage       tells data object to capture the current map and save as a png
-  # sendCommand     passes control info from inset display to main App for processing
-  # getScanData     pulls LIDAR data directly from the serial port and does preliminary processing
-  # updateData      calls getScanData, and updates the slam object and data matrix with this data, and loops to itself
-  # updateMap       draws a new map, using whatever data is available, and loops to itself
+  # init              creates all objects, draws initUI, and starts all loops (including serial thread)
+  # closeWin          first prompts the user if they really want to close, then ends serial thread and tkinter
+  # restartAll        restarts all objects that store map data, allowing history to be wiped without hard reset
+  # setDisplayMode    link to data.setDisplayMode function (prevents restart from breaking reference)
+  # setRelDestination link to data.setRelDestination function (prevents restart from breaking reference)
+  # saveImage         tells data object to capture the current map and save as a png
+  # getScanData       pulls LIDAR data directly from the serial port and does preliminary processing
+  # updateData        calls getScanData, and updates the slam object and data matrix with this data, and loops to itself
+  # updateMap         draws a new map, using whatever data is available, and loops to itself
 
   def __init__(self, master):
     self.master = master # root tk window
@@ -142,7 +139,7 @@ class App(object):
       self.statusFrame = EntryFrame(self.master, self.robot, self.closeWin, self.restartAll, self.saveImage, \
                                     self.serThread.getACK, self.serThread.resetACK, self.TXQueue, self.statusStr, twoLines=True)
       self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(),
-                                   sendCommand=self.statusFrame.sendCommand, setRelDestination=self.data.setRelDestination, **KWARGS)
+                                   sendCommand=self.statusFrame.sendCommand, setRelDestination=self.setRelDestination, **KWARGS)
       # pack frame
       self.statusFrame.pack(side='bottom', fill='x')
       self.insetFrame.pack(side='left', fill='both', expand=True)
@@ -150,9 +147,9 @@ class App(object):
       # create all the pretty stuff in the Tkinter window
       self.statusFrame = EntryFrame(self.master, self.robot, self.closeWin, self.restartAll, self.saveImage, \
                                     self.serThread.getACK, self.serThread.resetACK, self.TXQueue, self.statusStr)
-      self.regionFrame = RegionFrame(self.master, self.data.getMapMatrix(), setDisplayMode=self.data.setDisplayMode, **KWARGS)
+      self.regionFrame = RegionFrame(self.master, self.data.getMapMatrix(), setDisplayMode=self.setDisplayMode, **KWARGS)
       self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(),
-                                   sendCommand=self.statusFrame.sendCommand, setRelDestination=self.data.setRelDestination, **KWARGS)
+                                   sendCommand=self.statusFrame.sendCommand, setRelDestination=self.setRelDestination, **KWARGS)
       # pack frames
       self.statusFrame.pack(side='bottom', fill='x')
       self.regionFrame.pack(side='left', fill='both', expand=True)
@@ -183,12 +180,16 @@ class App(object):
     elif funcStep == 1:
       with self.RXQueue.mutex: self.RXQueue.queue.clear() # empty incoming data queue
       self.data = DataMatrix(**KWARGS)
-      self.insetFrame.setRelDestination = self.data.setRelDestination # recreate broken reference
-      if not FAST_MAPPING: self.regionFrame.setDisplayMode = self.data.setDisplayMode # recreate broken reference
       self.slam = Slam(self.robot, self.laser, **KWARGS)
       self.restarting = False
       self.updateData() # pull data from queue, put into data matrix
       self.updateMap() # draw new data matrix
+
+  def setDisplayMode(self, *args, **kwargs):
+    return self.data.setDisplayMode(*args, **kwargs)
+
+  def setRelDestination(self, *args, **kwargs):
+    return self.data.setRelDestination(*args, **kwargs)
 
   def saveImage(self): # function prototype until data is initialized
     self.paused = True
@@ -256,5 +257,15 @@ class App(object):
 
 if __name__ == '__main__':
   print(GPL)
+
+  logFilePath = os.path.join(*(logFileDirectory+[logFileName]))
+  if LOG_ALL_DATA: logFile = askForFile(logFilePath, 'w')
+  else: logFile = None
+
+  KWARGS, gvars = {}, globals()
+  for var in KWARGS_keys:
+    KWARGS[var] = gvars[var] # constants required in modules
+
   main()
+
   if LOG_ALL_DATA: logFile.close()

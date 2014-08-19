@@ -1,3 +1,4 @@
+baseStationMain.py
 readLogData.py
 examples/data_1AUG14_30m.log
 examples/data_24JUL14_14m.log
@@ -8,6 +9,6 @@ slambotgui/comms.py
 slambotgui/components.py
 slambotgui/cvslamshow.py
 slambotgui/guis.py
-slambotgui/maps.py
+slambotgui/dataprocessing.py
 slambotgui/slams.py
 slambotgui/tools.py

@@ -24,6 +24,29 @@ from matplotlib.lines import Line2D
 from sys import version_info
 PYTHON_SERIES = version_info[0]
 
+
+# Python tools
+if PYTHON_SERIES == 3: raw_input = lambda inStr: input(inStr)
+# else: raw_input = raw_input
+def askForFile(filePath, mode):
+  try: # check if file already exists
+    testFile = open(filePath, 'r')
+  except IOError:
+    if 'r' in mode: # trying to read from file, so make sure it exists
+      print("IOError: Could not find log file at {0:s}".format(logFilePath))
+      sys.exit("Please correct log file name.")
+    else:
+      pass
+  else:
+    testFile.close()
+    if 'w' in mode: # trying to write to file, so make sure not to accidentally overwrite anything
+      if raw_input("File {0:s} already exists. Overwrite? [Y/n]: ".format(filePath)).lower() == 'n':
+        sys.exit("Then please select new log file location.")
+    else:
+      pass
+  return open(filePath, mode)
+
+
 # Drawing tools
 ROBOT_WIDTH = 0.227 # [m]
 ROBOT_HEIGHT = 0.237
@@ -47,7 +70,7 @@ def shrinkTo(data, rows, cols): # from http://stackoverflow.com/a/10685869
   shrunk = data.reshape(rows, data.shape[0]/rows, cols, data.shape[1]/cols).sum(axis=1).sum(axis=2)
   return shrunk*255/shrunk.max()
 class Feature(object):
-  def __init__(self, com, mass, coords, bounds):
+  def __init__(self, mass, com, bounds, coords):
     self.com = com # (row, col) location of center of feature [pix]
     self.mass = mass # size of feature [square pixels]
     self.coords = coords # ([rows], [cols]) locations of all points of feature [pix]
@@ -56,13 +79,18 @@ class Feature(object):
     self.size = self.hgt + self.wid # [pix]
     self.rLims = bounds[0] # min and max row indices in this feature
     self.cLims = bounds[1] # min and max column indices in this feature
-  def overlapsFast(self, feature): # dumb, but fast
-    return abs(self.com[0]-feature.com[0]) + abs(self.com[1]-feature.com[1]) < (self.size + feature.size)/3
-  def overlaps(self, feature): # dumb, but finds adjacent
-    return not (self.rLims[1]<feature.rLims[0] or self.rLims[0]>feature.rLims[1] or self.cLims[1]<feature.cLims[0] or self.cLims[0]>feature.cLims[1])
-  def overlapsSlow(self, feature): # dumb, but thorough
+  # def getOverlap(self, that): # makes doesOverlap a LOT faster # not done yet...
+
+  #   return slice(self.rLims, , None), slice(, , None)
+  def isAdjacentTo(self, that): # dumb check of two features for overlap or adjacency of domains
+    return not (self.rLims[1]<that.rLims[0] or self.rLims[0]>that.rLims[1] or self.cLims[1]<that.cLims[0] or self.cLims[0]>that.cLims[1])
+  def isSeparateFrom(self, that):
+    return self.rLims[1]<=that.rLims[0] or self.rLims[0]>=that.rLims[1] or self.cLims[1]<=that.cLims[0] or self.cLims[0]>=that.cLims[1]
+  def doesOverlap(self, that):
+    if self.isSeparateFrom(that): return False
+    overlap = getOverlap(self, that)
     for point1 in zip(*self.coords):
-      for point2 in zip(*feature.coords):
+      for point2 in zip(*that.coords):
         if point1 == point2:
           return True
     return False
@@ -107,62 +135,66 @@ def paddedStr(inStr, length):
 class AStarMap(object):
   def __init__(self, mapMatrix):
     # mapMatrix is bool array, True where roads, False where obstacles
-    self.roads = np.where(mapMatrix, 100, 0) # prefer to stay away from walls # need to implement in better way
     self.walls = np.logical_not(mapMatrix)
     hgt, wid = mapMatrix.shape
-    self.nodes = [[AStarNode(row, col) for row in range(hgt)] for col in range(wid)]
-    self.graph = {} # maps each node to references to its neighbors
+    self.nodes = np.array([[AStarNode((row, col)) for row in range(hgt)] for col in range(wid)])
+    self.neighbors = {} # maps each node to references to its neighbors (called a graph if you like math) # should be stored in node data object...
     for row, col in ((i,j) for i in range(hgt) for j in range(wid)):
-      node = nodes[row][col]
-      self.graph[node] = []
-      for i, j in ((i,j) for i in [-1,0,1] for j in [-1,0,1] if not (i==0 and j==0)): # all neighbors
-        if not (0<=row+i<hgt or 0<=col+j<wid): continue # don't add out-of-bounds neighbors
-        if self.walls[i][j]: continue # don't add neighbors in walls
-        self.graph[self.nodes[row][col]].append(self.nodes[row+i][col+j]) # add neighbor
-      
+      node = nodes[row, col]
+      self.neighbors[node] = []
+      counter = 8
+      for r, c in ((row+i,col+j) for i in [-1,0,1] for j in [-1,0,1] if not (i==0 and j==0)): # all neighbors (excluding current)
+        if not (0<=r<hgt or 0<=c<wid): continue # don't add out-of-bounds neighbors
+        if self.walls[r, c]: continue # don't add neighbors in walls (fixed boundaries are defined here)
+        counter -= 1
+        self.neighbors[self.nodes[row, col]].append(self.nodes[r, c]) # add neighbor
+      node.numWalls = counter
+
   def heuristic(self, current, start, end):
-    return abs(current.x-end.x) + abs(current.y-end.y) + self.roads[node]
+    # defined as path length to end (ignoring obstacles)
+    dist_row = abs(current.row-end.row)
+    dist_col = abs(current.col-end.col)
+    return 101*abs(dist_row - dist_col) + 142*min(dist_row, dist_col) # favor proximity to end over proximity to start
       
   def search(self, startPoint, endPoint):
-    start = self.nodes[startPoint]
-    end = self.nodes[endPoint]
-    openSet = set()
-    closedSet = set()
+    start, end = self.nodes[startPoint], self.nodes[endPoint]
+    openSet, closedSet = set(), set()
     current = start # start at beginning
     openSet.add(current) # begin with first node as only open one
     while openSet: # as long as there are open nodes
       current = min(openSet, key=lambda node: node.g+node.h) # proceed with best node
       if current == end: # done
         path = []
-        while current.parent: # create path from chain of parents
-          path.append(current)
-          current = current.parent
-        path.append(current)
-        return path[::-1]
+        while current.parent != self.nodes[current.parent].parent: # create path from end to start via parents of current
+          path.append((current.row, current.col))
+          current = self.nodes[current.parent]
+        path.append(current) # add start (whose parent is itself)
+        return path[::-1] # reverse order to give proper direction
       openSet.remove(current) # close current node
       closedSet.add(current)
-      for node in self.graph[current]: # proceed by acting on all neighbors of current
-        if node in closedSet: # ignore node if closed
+      for neighbor in self.neighbors[current]: # proceed by acting on all neighbors of current node
+        if neighbor in closedSet: # ignore node if closed
           continue
-        if node in openSet: # compare weights of pathing through this neighbor
-          new_g = current.g + current.move_cost(node)
-          if node.g > new_g:
-            node.g = new_g
-            node.parent = current
+        if node in openSet: # determine if path from current is better than path from parent
+          g = current.g + current.moveCost(neighbor)
+          if neighbor.g > g: # moving to neighbor node from current node is better than from neighbor's parent
+            neighbor.g = g # update with new path
+            neighbor.parent = current.index
         else: # activate child node
-          node.g = current.g + current.move_cost(node)
-          node.h = self.heuristic(node, start, end)
-          node.parent = current
+          neighbor.g = current.g + current.moveCost(neighbor)
+          neighbor.h = self.heuristic(neighbor, start, end)
+          neighbor.parent = current.index
           openSet.add(node)
-    return None
+    return None # ran out of open nodes with no path available
 
 class AStarNode(object):
   def __init__(self, (row, col)):
-    self.g = 0
-    self.h = 0
-    self.row, self.col = row, col
-    self.parent = None
+    self.g = 0 # cost to get here (includes distance and other stuff)
+    self.h = 0 # heuristic cost (affects which open node to explore next)
+    self.numWalls = 8 # number of walls that border this node
+    self.index = (row, col) # location of self
+    self.parent = (row, col) # location of parent
 
-  def moveCost(self, that):
-    corner = abs(self.row - that.row) == 1 and abs(self.col - that.col) == 1
-    return 14 if corner else 10
+  def moveCost(self, that): # calculate g of moving from self to that
+    corner = ((self.row - that.row) + (self.col - that.col)) % 2 == 0
+    return (141 if corner else 100) + 70*that.numWalls # costs more to travel near walls

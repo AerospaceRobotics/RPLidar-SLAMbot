@@ -23,7 +23,7 @@ from tools import vecDiff, wrt, shrinkTo, radians, float2int, Feature
 import time
 import numpy as np # for array processing and matplotlib display
 from scipy.ndimage.interpolation import rotate
-from scipy.ndimage.measurements import label
+from scipy.ndimage.measurements import label, find_objects
 from scipy.misc import imresize
 
 
@@ -91,8 +91,8 @@ class DataMatrix(object):
     fow_brightLimit = 200
     wall_brightLimit = 240
     road_brightLimit = 240
-    shrink_size = 300
-    stime = time.clock()
+    shrink_size = 200
+    # stime = time.clock()
     pointMapShrunk = shrinkTo(self.pointMap, shrink_size, shrink_size)
     breezyMapShrunk = shrinkTo(self.breezyMap, shrink_size, shrink_size)
     unexplored = np.logical_and(fow_darkLimit < breezyMapShrunk, breezyMapShrunk < fow_brightLimit)
@@ -110,17 +110,19 @@ class DataMatrix(object):
     if self.displayMode == 4: return np.where(targets, 127, np.where(wall, 0, 255))
 
     lbl, num_lbls = label(targets, structure=[[1,1,1],[1,1,1],[1,1,1]])
-    self.addFeatures(lbl, num_lbls)
-    etime = time.clock()
-    print etime-stime
+    self.addFeatures(lbl, num_lbls, shrink_size)
+    # etime = time.clock()
+    # print etime-stime
     if self.displayMode == 5: return lbl*255/(lbl.max() if lbl.max() != 0 else 1)
 
-  def addFeatures(self, lbl, num_lbls):
-    for coords in [np.where(lbl == i) for i in range(1, num_lbls+1)]: # coordinates list for each feature
-      com = np.mean(coords, axis=1, dtype=int) # scipy's center_of_mass is too heavy
+  def addFeatures(self, lbl, num_lbls, shrink_size):
+    slices = find_objects(lbl)
+    for i, coords in ((i, np.where(lbl == i)) for i in range(1, num_lbls+1)): # coordinates list for each feature
       mass = len(coords[0])
-      # if mass >= self.minTargSize:
-      #   self.features.append(Feature())
+      if mass >= self.minTargSize:
+        bounds = [slices[i][j].indices(shrink_size)[:2] for j in (0,1)]
+        com = np.mean(coords, axis=1, dtype=int) # scipy's center_of_mass is too heavy
+        # self.features.append(Feature(mass, com, bounds, coords))
 
   def getMapArray(self, size):
     return bytearray(imresize(self.breezyMap if self.INTERNAL_MAP else self.pointMap, size, interp='nearest'))

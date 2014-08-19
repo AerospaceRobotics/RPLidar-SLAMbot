@@ -18,7 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from tools import bits2mask, PYTHON_SERIES
+from tools import bits2mask, PYTHON_SERIES, raw_input
 if PYTHON_SERIES == 2: from Queue import Empty as QueueEmpty
 elif PYTHON_SERIES == 3: from queue import Empty as QueueEmpty
 import sys
@@ -28,7 +28,6 @@ from serial.serialutil import SerialException
 from serial.tools import list_ports # get computer's port info
 from time import time, sleep
 from struct import unpack # parse incoming serial data
-if PYTHON_SERIES == 3: raw_input = lambda inStr: input(inStr)
 
 TALK_TO_XBEE = False
 
