@@ -9,7 +9,7 @@ Contents:
 All directories and files used by the SLAMbot.
 
 
-## `SLAMBotGUI-[version].tar.gz`
+## `SLAMBotGUI-0.2.tar.gz`
 Current stable release of our slambotgui package.  To install on your machine, download and unzip the file, then run the `setup.py` script with command-line option `install`.
 To download and unzip:
 
@@ -17,7 +17,7 @@ To download and unzip:
     tar -zxvf SLAMBotGUI-0.2.tar.gz
     cd SLAMBotGUI-0.2/
     
-If you do not want to install the package yet, you can test the distribution now (there are several user preference flags near the top of the file, which you should play around with to ensure full functionality):
+If you do not want to install the package yet, you can test the distribution now (there are several user preference flags near the top of the `readLogData` python file, which you should play around with to ensure full functionality):
 
     python readLogData.py
     
@@ -30,7 +30,40 @@ If you received no errors, test your install by:
     sudo rm -rf slambotgui/
     python readLogData.py
     
-If that works, congratulations, it's installed!  You can now do global imports of any of our provided classes into your code.  If you have a LIDAR unit with an Arduino interface, check out the `comms` module and how we use it in [`baseStationMain.py`](https://github.com/AerospaceRobotics/RPLidar-SLAMbot/blob/master/baseStationMain.py).
+If that works, congratulations, it's installed!  You can now do global imports of any of our provided classes into your code.  If you have a LIDAR unit with an Arduino interface, check out the `comms` module and how we use it in [`baseStationMain.py`](https://github.com/AerospaceRobotics/RPLidar-SLAMbot/blob/master/baseStationMain.py), also included in the distribution.
+
+
+## slambotgui_source (Python)
+Working directory for our slambotgui package, which combines serial protocol, XBee configuration, robot control, SLAM processing, and several GUI options for any robotics system (currently designed for use with an Arduino-based SLAM-enabled robot).
+### `baseStationMain.py`
+Contains all base station code to run the slamBot.  BreezySLAM for Python must already be installed on your machine to use this code.  Written in Python 2.7.6, tested and functioning in Python 3.4.0.  Written and tested in Ubuntu 14.04, however should run on all Linux machines.  Have not tested in Windows or OS X.  BreezySLAM does not support Python 3.x as of this writing, however we are working on that.  OpenCV does not currently support Python 3.x, however the dev build is available and reportedly functioning ([link](http://stackoverflow.com/questions/20953273/install-opencv-for-python-3-3)).  We highly recommend running Python 2, but are trying to support Python 3 through a possible future transition to PyQt from Tkinter.
+### `readLogData.py`
+Stripped-down version of `baseStationMain.py` designed to be used to read log files without communication with the robot.
+### `setup.py`
+Script used to create tarball file and install package.
+### slambotgui
+Main package directory.
+#### `comms.py`
+Serial communication thread.  Custom serial protocol very easy to implement.
+#### `components.py`
+Physical robot parts, including the specific hardware we're using in our project.  Contains generalized Robot and Laser classes.
+#### `guis.py`
+Tkinter frames used in our GUI.  If FAST_MAPPING is true, only EntryButtons is used.  It serves as the robot control panel alongside the OpenCV display window..
+#### `dataprocessing.py`
+Data objects to store map information.
+#### `slams.py`
+BreezySLAM-base SLAM classes.
+#### `cvslamshow.py`
+OpenCV helper class from the BreezySLAM creator, Simon D. Levy.  We made minor modifications and use it for rapid-mapping (matplotlib is very slow).
+### examples
+Log files included with current stable distribution.
+#### `data_[date]_[room_size].log`
+File we've created using baseStationMain.py to allow for project demonstation without the accompanying hardware.  The file is ascii-encoded space-delimited decimal, where scans are newline-delimited, and each scan takes the following format:
+
+    <int16_t left_wheel_ticks> <int16_t right_wheel_ticks> <uint16_t counter_ms> <scan value at 0deg> <scan value at 1deg> ...
+### `MANIFEST`(`.in`)
+List of all files in current stable distribution.
+
 
 ## libraries
 The files required by the robot to run its sensors and support its functionality.
@@ -43,47 +76,14 @@ Python and C++ files to enable SLAM, released as open-source BreezySLAM ([link](
 Allows precise, high-frequency, low-overhead encoder monitoring ([link](http://www.pjrc.com/teensy/td_libs_Encoder.html)).
 ### RPLidarDriver (Arduino)
 Provides simple methods for retrieving data from the RPLidar sensor ([link](http://rplidar.robopeak.com/subsites/rplidar/download.html)).
-### slambotgui_source (Python)
-Working directory for our slambotgui package, which combines serial protocol, XBee configuration, robot control, SLAM processing, and several GUI options for any robotics system (currently designed for use with an Arduino-based SLAM-enabled robot).
-#### `setup.py`
-Script used to create tarball file and install package.
-#### slambotgui
-Main package directory.
-##### `comms.py`
-Serial communication thread.  Custom serial protocol very easy to implement.
-##### `components.py`
-Physical robot parts, including the specific hardware we're using in our project.  Contains generalized Robot and Laser classes.
-##### `guis.py`
-Tkinter frames used in our GUI.  If FAST_MAPPING is true, only EntryButtons is used.  It serves as the robot control panel alongside the OpenCV display window..
-##### `maps.py`
-Data objects to store map information.
-##### `slams.py`
-BreezySLAM-base SLAM classes.
-##### `cvslamshow.py`
-OpenCV helper class from the BreezySLAM creator, Simon D. Levy.  We made minor modifications and use it for rapid-mapping (matplotlib is very slow).
-#### examples
-Log files included with current stable distribution.
-#### `MANIFEST`(`.in`)
-List of all files in current stable distribution.
 
-
-## `baseStationMain.py`
-Contains all base station code to run the slamBot.  BreezySLAM for Python must already be installed on your machine to use this code.  Written in Python 2.7.6, tested and functioning in Python 3.4.0.  Written and tested in Ubuntu 14.04, however should run on all Linux machines.  Have not tested in Windows or OS X.  BreezySLAM does not support Python 3.x as of this writing, however we are working on that.  OpenCV does not currently support Python 3.x, however the dev build is available and reportedly functioning ([link](http://stackoverflow.com/questions/20953273/install-opencv-for-python-3-3)).  We highly recommend running Python 2, but are trying to support Python 3.
 
 ## `slamBotMain/slamBotMain.ino`
 Arduino code for the Seeeduino Mega on our slamBot.  Encoder and RPLidarDriver should be placed in the sketchbook folder to be properly added by the Arduino compiler at compile-time.  Cannot be run on an Arduino with fewer than 4 serial ports if full functionality is to be maintained.  Hence, we recommend the Arduino Mega, or the [Seeeduino Mega](http://aerospacerobotics.com/products/seeeduino-mega-arduino-compatible-board). <!---([which has more features](link to extra pins blog post)).-->
 
 
-## `readLogData.py`
-Stripped-down version of `baseStationMain.py` designed to be used to read log files without communication with the robot.
-
-
 ## examples
-Log files and images generated by baseStationMain.py.  Log files can be run with readLogData.py with no required hardware, for demonstration purposes.
-### `data_[date]_[room_size].log`
-Example log file we've created to allow for project demonstation without the accompanying hardware.  The file is ascii-encoded space-delimited decimal, where scans are newline-delimited, and each scan takes the following format:
-
-    <int16_t left_wheel_ticks> <int16_t right_wheel_ticks> <uint16_t counter_ms> <scan value at 0deg> <scan value at 1deg> ...
+Images generated by baseStationMain.py.
 ### `data_[date]_[room_size].png`
 Image file created by reading the log data in the corresponding log file.  Just as in the naming of the log file, `room_size` in the file name denotes the approximate size of the room mapped in the log file.
 
