@@ -27,6 +27,7 @@ PYTHON_SERIES = version_info[0]
 
 # Python tools
 if PYTHON_SERIES == 3: raw_input = lambda inStr: input(inStr)
+else: raw_input = raw_input
 # else: raw_input = raw_input
 def askForFile(filePath, mode):
   try: # check if file already exists

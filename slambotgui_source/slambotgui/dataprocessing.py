@@ -87,11 +87,11 @@ class DataMatrix(object):
     if self.displayMode == 0: return self.breezyMap if self.INTERNAL_MAP else self.pointMap
     if self.displayMode == 1: return self.breezyMap
     if self.displayMode == 2: return self.pointMap
-    fow_darkLimit = 80
-    fow_brightLimit = 200
-    wall_brightLimit = 240
-    road_brightLimit = 240
-    shrink_size = 200
+    fow_darkLimit = 80 # breezyMap value cutoff for points too low to be fog of war
+    fow_brightLimit = 200 # breezyMap value cutoff for points too high to be fog of war
+    wall_brightLimit = 240 # pointMap value cutoff for points too high to be walls
+    road_darkLimit = 240 # breezyMap value cutoff for points too low to be road
+    shrink_size = 200 # size of reduced-size map (used to speed up processing)
     # stime = time.clock()
     pointMapShrunk = shrinkTo(self.pointMap, shrink_size, shrink_size)
     breezyMapShrunk = shrinkTo(self.breezyMap, shrink_size, shrink_size)
@@ -100,7 +100,7 @@ class DataMatrix(object):
     display = np.where(wall, 0, np.where(unexplored, 127, 255))
     if self.displayMode == 3: return display
 
-    if self.displayMode == 6: return np.where(breezyMapShrunk > road_brightLimit, 255, 0)
+    if self.displayMode == 6: return np.where(breezyMapShrunk > road_darkLimit, 255, 0)
 
     gradientx, gradienty = np.zeros((shrink_size,shrink_size), dtype=bool), np.zeros((shrink_size,shrink_size), dtype=bool)
     n = 1 # number of times to take the diff (width of diff)
@@ -116,12 +116,12 @@ class DataMatrix(object):
     if self.displayMode == 5: return lbl*255/(lbl.max() if lbl.max() != 0 else 1)
 
   def addFeatures(self, lbl, num_lbls, shrink_size):
-    slices = find_objects(lbl)
-    for i, coords in ((i, np.where(lbl == i)) for i in range(1, num_lbls+1)): # coordinates list for each feature
-      mass = len(coords[0])
-      if mass >= self.minTargSize:
-        bounds = [slices[i][j].indices(shrink_size)[:2] for j in (0,1)]
-        com = np.mean(coords, axis=1, dtype=int) # scipy's center_of_mass is too heavy
+    slices = find_objects(lbl) # index regions of each object in targets matrix
+    for i, coords in ((i, np.where(lbl == i+1)) for i in range(num_lbls)): # coordinates list for each feature
+      mass = len(coords[0]) # number of points in each object
+      if mass >= self.minTargSize: # only continue if object is of reasonable size
+        bounds = [slices[i][j].indices(shrink_size)[:2] for j in (0,1)] # slice.indices takes maximum index as argument
+        com = np.mean(coords, axis=1, dtype=int) # scipy's center_of_mass is too heavy (for no reason)
         # self.features.append(Feature(mass, com, bounds, coords))
 
   def getMapArray(self, size):
