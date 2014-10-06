@@ -33,6 +33,23 @@ If you received no errors, test your install by:
 If that works, congratulations, it's installed!  You can now do global imports of any of our provided classes into your code.  If you have a LIDAR unit with an Arduino interface, check out the `comms` module and how we use it in [`baseStationMain.py`](https://github.com/AerospaceRobotics/RPLidar-SLAMbot/blob/master/baseStationMain.py), also included in the distribution.
 
 
+## libraries
+The files required by the robot to run its sensors and support its functionality.
+### Standard Python libraries
+These are all the standard Python libraries that we use in the Base Station code.  We're not including anything that comes with Python:
+pySerial, numpy, scipy, matplotlib, OpenCV (optional), PIL (optional), Tkinter (tkinter in Python 3)
+### breezyslam (Python)
+Python and C++ files to enable SLAM, released as open-source BreezySLAM ([link](http://home.wlu.edu/~levys/software/breezyslam/)).
+### Encoder (Arduino)
+Allows precise, high-frequency, low-overhead encoder monitoring ([link](http://www.pjrc.com/teensy/td_libs_Encoder.html)).
+### RPLidarDriver (Arduino)
+Provides simple methods for retrieving data from the RPLidar sensor ([link](http://rplidar.robopeak.com/subsites/rplidar/download.html)).
+
+
+## `slamBotMain/slamBotMain.ino`
+Arduino code for the Seeeduino Mega on our slamBot.  Encoder and RPLidarDriver should be placed in the sketchbook folder to be properly added by the Arduino compiler at compile-time.  Cannot be run on an Arduino with fewer than 4 serial ports if full functionality is to be maintained.  Hence, we recommend the Arduino Mega, or the [Seeeduino Mega](http://aerospacerobotics.com/products/seeeduino-mega-arduino-compatible-board). <!---([which has more features](link to extra pins blog post)).-->
+
+
 ## slambotgui_source (Python)
 Working directory for our slambotgui package, which combines serial protocol, XBee configuration, robot control, SLAM processing, and several GUI options for any robotics system (currently designed for use with an Arduino-based SLAM-enabled robot).
 ### `baseStationMain.py`
@@ -63,23 +80,6 @@ File we've created using baseStationMain.py to allow for project demonstation wi
     <int16_t left_wheel_ticks> <int16_t right_wheel_ticks> <uint16_t counter_ms> <scan value at 0deg> <scan value at 1deg> ...
 ### `MANIFEST`(`.in`)
 List of all files in current stable distribution.
-
-
-## libraries
-The files required by the robot to run its sensors and support its functionality.
-### Standard Python libraries
-These are all the standard Python libraries that we use in the Base Station code.  We're not including anything that comes with Python:
-pySerial, numpy, scipy, matplotlib, OpenCV (optional), PIL (optional), Tkinter (tkinter in Python 3)
-### breezyslam (Python)
-Python and C++ files to enable SLAM, released as open-source BreezySLAM ([link](http://home.wlu.edu/~levys/software/breezyslam/)).
-### Encoder (Arduino)
-Allows precise, high-frequency, low-overhead encoder monitoring ([link](http://www.pjrc.com/teensy/td_libs_Encoder.html)).
-### RPLidarDriver (Arduino)
-Provides simple methods for retrieving data from the RPLidar sensor ([link](http://rplidar.robopeak.com/subsites/rplidar/download.html)).
-
-
-## `slamBotMain/slamBotMain.ino`
-Arduino code for the Seeeduino Mega on our slamBot.  Encoder and RPLidarDriver should be placed in the sketchbook folder to be properly added by the Arduino compiler at compile-time.  Cannot be run on an Arduino with fewer than 4 serial ports if full functionality is to be maintained.  Hence, we recommend the Arduino Mega, or the [Seeeduino Mega](http://aerospacerobotics.com/products/seeeduino-mega-arduino-compatible-board). <!---([which has more features](link to extra pins blog post)).-->
 
 
 ## examples
