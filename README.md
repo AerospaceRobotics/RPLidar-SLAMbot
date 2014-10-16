@@ -36,8 +36,10 @@ If that works, congratulations, it's installed!  You can now do global imports o
 ## libraries
 The files required by the robot to run its sensors and support its functionality.
 ### Standard Python libraries
-These are all the standard Python libraries that we use in the Base Station code.  We're not including anything that comes with Python:
-pySerial, numpy, scipy, matplotlib, OpenCV (optional), PIL (optional), Tkinter (tkinter in Python 3)
+The libraries we use in the Base Station code, but are not required, are PIL and OpenCV.  We also use numpy, scipy, and matplotlib, which need to be installed explicitly:
+    
+    sudo apt-get install python-numpy python-matplotlib python-scipy
+    
 ### breezyslam (Python)
 Python and C++ files to enable SLAM, released as open-source BreezySLAM ([link](http://home.wlu.edu/~levys/software/breezyslam/)).
 ### Encoder (Arduino)
