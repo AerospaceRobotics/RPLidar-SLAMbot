@@ -91,6 +91,7 @@ Image file created by reading the log data in the corresponding log file.  Just 
 
 
 ## Linux Custom Baud Hack
+Note: If you receive the "Invalid serial port," it is likely due to serial port permissions.  Fix with: `sudo gpasswd --add ${USER} dialout` then log out and back in.
 Allows you to use non-standard baud rates on a Linux machine (more info: [link](https://groups.google.com/forum/#!msg/ultimaker/BNjPpoJpfrE/Xmbp0XxTWXEJ)).
 If you receive the error "Inappropriate ioctl for device", traced back to within pySerial, apply this patch.
 ### Python2

@@ -45,9 +45,9 @@ from slambotgui.guis import RegionFrame, InsetFrame, EntryFrame
 from slambotgui.components import DaguRover5, RPLIDAR
 
 # User preferences
-INTERNAL_MAP = False
+INTERNAL_MAP = True
 SMARTNESS_ON = False
-FAST_MAPPING = False
+FAST_MAPPING = True
 LOG_ALL_DATA = False
 logFileDirectory = ['examples'] # leave as empty string in list for current directory
 logFileName = 'test.log'

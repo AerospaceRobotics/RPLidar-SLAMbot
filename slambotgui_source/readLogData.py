@@ -39,11 +39,11 @@ from slambotgui.guis import RegionFrame, InsetFrame, StatusFrame
 from slambotgui.components import DaguRover5, RPLIDAR
 
 # User preferences
-INTERNAL_MAP = True
-SMARTNESS_ON = True
-FAST_MAPPING = False
+INTERNAL_MAP = False
+SMARTNESS_ON = False
+FAST_MAPPING = True
 logFileDirectory = ['examples'] # leave as empty string in list for current directory
-logFileName = 'data_6AUG14_16m.log'
+logFileName = 'data_24JUL14_14m.log'
 if FAST_MAPPING: from slambotgui.cvslamshow import SlamShow # uses OpenCV
 
 # SLAM preferences
@@ -51,8 +51,8 @@ USE_ODOMETRY = True
 MAP_QUALITY = 3
 
 # GUI constants
-DATA_RATE = 1 # minimum time between updating data from lidar [ms]
-MAP_RATE = 100 # minimum time between updating map [ms]
+DATA_RATE = 1 # minimum time between updating data from lidar [ms] # can't be 0
+MAP_RATE = 200 # minimum time between updating map [ms]
 
 # Laser constants (shared with Arduino)
 DIST_MIN = 100; # minimum distance
