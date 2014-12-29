@@ -102,7 +102,17 @@ Created with `diff -u serialposix_old.py serialposix_new.py > pyserial.patch`.
 To use:
 
     cd /usr/lib/python2.7/dist-packages/serial
-    sudo patch serialposix.py < /[path of patch file on your machine]/pyserial.patch
+or
+
+    cd /usr/local/lib/python2.7/dist-packages/serial
+    
+depending on where pySerial is installed on your machine.  Then do:
+
+    sudo patch serialposix.py < /[path of patch file]pyserial.patch
+which would probably look like:
+
+    sudo patch serialposix.py < /[path of this repo]/Linux\ Custom\ Baud\ Hack/Python2/pyserial.patch
+if you've simply cloned this repo instead of downloading just the patch file.
 #### serialposix_old.py
 This is our backup of the `serialposix.py` file.
 #### serialposix_new.py
