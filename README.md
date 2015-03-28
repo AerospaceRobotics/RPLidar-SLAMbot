@@ -33,13 +33,22 @@ If you received no errors, test your install by:
 If that works, congratulations, it's installed!  You can now do global imports of any of our provided classes into your code.  If you have a LIDAR unit with an Arduino interface, check out the `comms` module and how we use it in [`baseStationMain.py`](https://github.com/AerospaceRobotics/RPLidar-SLAMbot/blob/master/baseStationMain.py), also included in the distribution.
 
 
-## libraries
+## Dependencies
 The files required by the robot to run its sensors and support its functionality.
-### Standard Python libraries
+### Standard Python Libraries
 The libraries we use in the Base Station code, but are not required, are PIL and OpenCV.  We also use numpy, scipy, and matplotlib, which need to be installed explicitly:
     
     sudo apt-get install python-numpy python-matplotlib python-scipy
     
+### OpenCV (Python)
+Although not required, OpenCV dramatically improves the performance of this library.  Matplotlib can only achieve a refresh rate of 2hz, while also bogging down the rest of the program.  Installing OpenCV is notoriously tricky, but we've had the pleasure of figuring out the best way to do it so that you don't have to ([link](https://help.ubuntu.com/community/OpenCV/)).  To start off, you'll need to download the highest version number `opencv.sh` from [`this repository`](https://github.com/jayrambhia/Install-OpenCV/tree/master/Ubuntu).  If it isn't 2.4.9 (correct as of the time of this writing), simply change the filename in the following steps before proceeding:
+    
+    wget https://raw.githubusercontent.com/jayrambhia/Install-OpenCV/master/Ubuntu/2.4/opencv2_4_9.sh
+    chmod +x opencv2_4_9.sh
+    ./opencv2_4_9.sh
+    
+This will take a long time, so go ahead and give the rest of this README a looksy while you wait!  If it fails, check out the link above.  
+*working on an ODROID? See: [the ODROID forum](http://forum.odroid.com/viewtopic.php?f=112&t=8036) and possibly [this ROS answers post](http://answers.ros.org/question/179989/rgbdslam_v2-error-with-make/?answer=180038#post-id-180038).
 ### breezyslam (Python)
 Python and C++ files to enable SLAM, released as open-source BreezySLAM ([link](http://home.wlu.edu/~levys/software/breezyslam/)).
 ### Encoder (Arduino)
@@ -49,7 +58,7 @@ Provides simple methods for retrieving data from the RPLidar sensor ([link](http
 
 
 ## `slamBotMain/slamBotMain.ino`
-Arduino code for the Seeeduino Mega on our slamBot.  Encoder and RPLidarDriver should be placed in the sketchbook folder to be properly added by the Arduino compiler at compile-time.  Cannot be run on an Arduino with fewer than 4 serial ports if full functionality is to be maintained.  Hence, we recommend the Arduino Mega, or the [Seeeduino Mega](http://aerospacerobotics.com/products/seeeduino-mega-arduino-compatible-board). <!---([which has more features](link to extra pins blog post)).-->
+Arduino code for the Seeeduino Mega on our slamBot.  Encoder and RPLidarDriver should be placed in the sketchbook folder to be properly added by the Arduino compiler at compile-time.  Cannot be run on an Arduino with fewer than 4 serial ports if full functionality is to be maintained.  Hence, we recommend the Arduino Mega, or the [Seeeduino Mega](http://aerospacerobotics.com/products/seeeduino-mega-arduino-compatible-board), [which has more features](http://aerospacerobotics.com/blogs/learn/14882125-seeeduino-mega-pin-control).
 
 
 ## slambotgui_source (Python)
@@ -67,7 +76,7 @@ Serial communication thread.  Custom serial protocol very easy to implement.
 #### `components.py`
 Physical robot parts, including the specific hardware we're using in our project.  Contains generalized Robot and Laser classes.
 #### `guis.py`
-Tkinter frames used in our GUI.  If FAST_MAPPING is true, only EntryButtons is used.  It serves as the robot control panel alongside the OpenCV display window..
+Tkinter frames used in our GUI.  If FAST_MAPPING is true, only EntryButtons is used, which serves as the robot control panel alongside the OpenCV display window.
 #### `dataprocessing.py`
 Data objects to store map information.
 #### `slams.py`
@@ -93,7 +102,7 @@ Image file created by reading the log data in the corresponding log file.  Just 
 ## Linux Custom Baud Hack
 Note: If you receive the "Invalid serial port," it is likely due to serial port permissions.  Fix with: `sudo gpasswd --add ${USER} dialout` then log out and back in.
 Allows you to use non-standard baud rates on a Linux machine (more info: [link](https://groups.google.com/forum/#!msg/ultimaker/BNjPpoJpfrE/Xmbp0XxTWXEJ)).
-If you receive the error "Inappropriate ioctl for device", traced back to within pySerial, apply this patch.
+If you receive the error "Inappropriate ioctl for device", traced back to within pySerial, apply this patch.  Please note that this appears to be fixed in the current (accessed 29DEC2014) release of pySerial.  If you try to apply the patch and the patch fails, the problem has probably already been fixed in your version of pySerial.
 ### Python2
 Contains all the patch information for Python 2.x.
 #### pyserial.patch
@@ -102,7 +111,17 @@ Created with `diff -u serialposix_old.py serialposix_new.py > pyserial.patch`.
 To use:
 
     cd /usr/lib/python2.7/dist-packages/serial
-    sudo patch serialposix.py < /[path of patch file on your machine]/pyserial.patch
+or
+
+    cd /usr/local/lib/python2.7/dist-packages/serial
+    
+depending on where pySerial is installed on your machine.  Then do:
+
+    sudo patch serialposix.py < /[path of patch file]pyserial.patch
+which would probably look like:
+
+    sudo patch serialposix.py < /[path of this repo]/Linux\ Custom\ Baud\ Hack/Python2/pyserial.patch
+if you've simply cloned this repo instead of downloading just the patch file.
 #### serialposix_old.py
 This is our backup of the `serialposix.py` file.
 #### serialposix_new.py
