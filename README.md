@@ -33,13 +33,22 @@ If you received no errors, test your install by:
 If that works, congratulations, it's installed!  You can now do global imports of any of our provided classes into your code.  If you have a LIDAR unit with an Arduino interface, check out the `comms` module and how we use it in [`baseStationMain.py`](https://github.com/AerospaceRobotics/RPLidar-SLAMbot/blob/master/baseStationMain.py), also included in the distribution.
 
 
-## libraries
+## Dependencies
 The files required by the robot to run its sensors and support its functionality.
 ### Standard Python libraries
 The libraries we use in the Base Station code, but are not required, are PIL and OpenCV.  We also use numpy, scipy, and matplotlib, which need to be installed explicitly:
     
     sudo apt-get install python-numpy python-matplotlib python-scipy
     
+### OpenCV (Python)
+Although not required, OpenCV dramatically improves the performance of this library.  Matplotlib can only achieve a refresh rate of 2hz, while also bogging down the rest of the program.  Installing OpenCV is notoriously tricky, but we've had the pleasure of figuring out the best way to do it so that you don't have to ([link](https://help.ubuntu.com/community/OpenCV/)).  To start off, you'll need to download the highest version number `opencv.sh` from [`this repository`](https://github.com/jayrambhia/Install-OpenCV/tree/master/Ubuntu).  If it isn't 2.4.9 (correct as of the time of this writing), simply change the filename in the following steps before proceeding:
+    
+    wget https://raw.githubusercontent.com/jayrambhia/Install-OpenCV/master/Ubuntu/2.4/opencv2_4_9.sh
+    chmod +x opencv2_4_9.sh
+    ./opencv2_4_9.sh
+    
+This will take a long time, so go ahead and give the rest of this README a looksy while you wait!  If it fails, check out the link above.  
+*working on an ODROID? See: [link](http://answers.ros.org/question/179989/rgbdslam_v2-error-with-make/?answer=180038#post-id-180038).
 ### breezyslam (Python)
 Python and C++ files to enable SLAM, released as open-source BreezySLAM ([link](http://home.wlu.edu/~levys/software/breezyslam/)).
 ### Encoder (Arduino)
