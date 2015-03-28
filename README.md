@@ -35,7 +35,7 @@ If that works, congratulations, it's installed!  You can now do global imports o
 
 ## Dependencies
 The files required by the robot to run its sensors and support its functionality.
-### Standard Python libraries
+### Standard Python Libraries
 The libraries we use in the Base Station code, but are not required, are PIL and OpenCV.  We also use numpy, scipy, and matplotlib, which need to be installed explicitly:
     
     sudo apt-get install python-numpy python-matplotlib python-scipy
@@ -48,7 +48,7 @@ Although not required, OpenCV dramatically improves the performance of this libr
     ./opencv2_4_9.sh
     
 This will take a long time, so go ahead and give the rest of this README a looksy while you wait!  If it fails, check out the link above.  
-*working on an ODROID? See: [link](http://answers.ros.org/question/179989/rgbdslam_v2-error-with-make/?answer=180038#post-id-180038).
+*working on an ODROID? See: [the ODROID forum](http://forum.odroid.com/viewtopic.php?f=112&t=8036) and possibly [this ROS answers post](http://answers.ros.org/question/179989/rgbdslam_v2-error-with-make/?answer=180038#post-id-180038).
 ### breezyslam (Python)
 Python and C++ files to enable SLAM, released as open-source BreezySLAM ([link](http://home.wlu.edu/~levys/software/breezyslam/)).
 ### Encoder (Arduino)
@@ -58,7 +58,7 @@ Provides simple methods for retrieving data from the RPLidar sensor ([link](http
 
 
 ## `slamBotMain/slamBotMain.ino`
-Arduino code for the Seeeduino Mega on our slamBot.  Encoder and RPLidarDriver should be placed in the sketchbook folder to be properly added by the Arduino compiler at compile-time.  Cannot be run on an Arduino with fewer than 4 serial ports if full functionality is to be maintained.  Hence, we recommend the Arduino Mega, or the [Seeeduino Mega](http://aerospacerobotics.com/products/seeeduino-mega-arduino-compatible-board). <!---([which has more features](link to extra pins blog post)).-->
+Arduino code for the Seeeduino Mega on our slamBot.  Encoder and RPLidarDriver should be placed in the sketchbook folder to be properly added by the Arduino compiler at compile-time.  Cannot be run on an Arduino with fewer than 4 serial ports if full functionality is to be maintained.  Hence, we recommend the Arduino Mega, or the [Seeeduino Mega](http://aerospacerobotics.com/products/seeeduino-mega-arduino-compatible-board), [which has more features](http://aerospacerobotics.com/blogs/learn/14882125-seeeduino-mega-pin-control).
 
 
 ## slambotgui_source (Python)
@@ -76,7 +76,7 @@ Serial communication thread.  Custom serial protocol very easy to implement.
 #### `components.py`
 Physical robot parts, including the specific hardware we're using in our project.  Contains generalized Robot and Laser classes.
 #### `guis.py`
-Tkinter frames used in our GUI.  If FAST_MAPPING is true, only EntryButtons is used.  It serves as the robot control panel alongside the OpenCV display window..
+Tkinter frames used in our GUI.  If FAST_MAPPING is true, only EntryButtons is used, which serves as the robot control panel alongside the OpenCV display window.
 #### `dataprocessing.py`
 Data objects to store map information.
 #### `slams.py`
