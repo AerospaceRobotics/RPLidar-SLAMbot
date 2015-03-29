@@ -41,20 +41,18 @@ The libraries we use in the Base Station code, but are not required, are PIL and
     sudo apt-get install python-numpy python-matplotlib python-scipy
     
 ### OpenCV (Python)
-Although not required, OpenCV dramatically improves the performance of this library.  Matplotlib can only achieve a refresh rate of 2hz, while also bogging down the rest of the program.  Installing OpenCV is notoriously tricky, but we've had the pleasure of figuring out the best way to do it so that you don't have to ([link](https://help.ubuntu.com/community/OpenCV/)). * To start off, you'll need to download the highest version number `opencv.sh` from [`this repository`](https://github.com/jayrambhia/Install-OpenCV/tree/master/Ubuntu).  If it isn't 2.4.9 (correct as of the time of this writing), simply change the filename in the following steps before proceeding:
+Although not required, OpenCV dramatically improves the performance of this library.  Matplotlib can only achieve a refresh rate of 2hz, while also bogging down the rest of the program.  Installing OpenCV is notoriously tricky, but we've had the pleasure of figuring out the best way to do it so that you don't have to ([link](https://help.ubuntu.com/community/OpenCV/)). * To start off, you'll need to download the highest version number `opencv.sh` from [`this repository`](https://github.com/jayrambhia/Install-OpenCV/tree/master/Ubuntu) and run `chmod +x opencvX.X.X.sh` to make it executable.  We've included the current one (2.4.9; as of this writing) in our repo for your convenience.  It's already executable, so you can just:
 
-    wget https://raw.githubusercontent.com/jayrambhia/Install-OpenCV/master/Ubuntu/2.4/opencv2_4_9.sh
-    chmod +x opencv2_4_9.sh
-    ./opencv2_4_9.sh
+    wget https://raw.githubusercontent.com/AerospaceRobotics/RPLidar-SLAMbot/master/libraries/opencv_ubuntu.sh
+    ./opencv_ubuntu.sh
     
 This will take a long time, so go ahead and give the rest of this README a looksy while you wait!  If it fails, check out the link above.
 
 *working on an ODROID?  Do this instead:  
 Try the steps immediately following this paragraph.  We got this from [the ODROID forum](http://forum.odroid.com/viewtopic.php?f=112&t=8036), and it works for us on our ODROID XU3-Lite which is running the Lubuntu image from ODROID.
 
-    wget https://raw.githubusercontent.com/AerospaceRobotics/RPLidar-SLAMbot/master/libraries/opencv.sh
-    chmod +x opencv.sh
-    ./opencv.sh
+    wget https://raw.githubusercontent.com/AerospaceRobotics/RPLidar-SLAMbot/master/libraries/opencv_odroid.sh
+    ./opencv_odroid.sh
 
 ### breezyslam (Python)
 Python and C++ files to enable SLAM, released as open-source BreezySLAM ([link](http://home.wlu.edu/~levys/software/breezyslam/)).
