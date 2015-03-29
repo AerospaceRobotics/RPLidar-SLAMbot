@@ -1,6 +1,6 @@
 /*
 
-random.h - Function prototypes fora random-number generator supporting normal 
+random.h - Function prototypes for a random-number generator supporting normal 
 distributions
 
 Copyright (C) 2014 Simon D. Levy
@@ -20,12 +20,20 @@ You should have received a copy of the GNU Lesser General Public License
 along with this code.  If not, see <http:#www.gnu.org/licenses/>.
 */
 
+#include "stdlib.h"
+
 #ifdef __cplusplus 
 extern "C" {
 #endif
+    
+/* Returns size of random-number generator in bytes */
+size_t random_size(void);
 
 /* Creates and initializes a new random-number generator */
-void * random_init(int seed);
+void * random_new(int seed);
+
+/* Initializes a random-number generator */
+void random_init(void * r, int seed);
 
 /* Make a copy of the specified random-number generator */
 void * random_copy(void * r);
@@ -39,4 +47,3 @@ double random_normal(void * v, double mu, double sigma);
 #ifdef __cplusplus 
 }
 #endif
-

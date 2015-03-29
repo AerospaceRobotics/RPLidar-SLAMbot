@@ -423,7 +423,7 @@ float r4_nor ( uint32_t *jsr, uint32_t kn[128], float fn[128], float wn[128] )
         {
           x = - 0.2904764 * log ( r4_uni ( jsr ) );
           y = - log ( r4_uni ( jsr ) );
-          if ( x * x <= y + y );
+          if ( x * x <= y + y )
           {
             break;
           }

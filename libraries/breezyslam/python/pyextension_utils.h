@@ -99,6 +99,33 @@ add_class(
    PyObject * tup,
    int pos,
    double * val);
+ 
+/**
+ * Extracts a named double from an object.
+ * @param obj the obj
+ * @param name the name
+ * @param val gets the returned value
+ * @return true on sucess, false on failure
+ */
+ int
+ double_from_obj(
+   PyObject * obj,
+   const char * name,
+   double * val);
+ 
+/**
+ * Extracts a named int from an object.
+ * @param obj the obj
+ * @param name the name
+ * @param val gets the returned value
+ * @return true on sucess, false on failure
+ */
+ int
+int_from_obj(
+   PyObject * obj,
+   const char * name,
+   int * val); 
+
    
 /**
 * Raises a bad-argument exception and returns -1 on passing of incorrent argument type
@@ -115,4 +142,5 @@ error_on_check_argument_type(
     const char * typname, 
     const char * classname,
     const char *methodname);
+
 

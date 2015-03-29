@@ -42,7 +42,20 @@ class CoreSLAM(object):
     '''
     CoreSLAM is an abstract class that uses the classes Position, Map, Scan, and Laser
     to run variants of the simple CoreSLAM (tinySLAM) algorithm described in 
-    (Steux & El Hamzaoui 2010). Implementing classes should provide the method
+        
+     @inproceedings{coreslam-2010,  
+       author    = {Bruno Steux and Oussama El Hamzaoui}, 
+       title     = {CoreSLAM: a SLAM Algorithm in less than 200 lines of C code},  
+       booktitle = {11th International Conference on Control, Automation,   
+                    Robotics and Vision, ICARCV 2010, Singapore, 7-10  
+                    December 2010, Proceedings},  
+       pages     = {1975-1979},  
+       publisher = {IEEE},  
+       year      = {2010}
+     }
+    
+    
+    Implementing classes should provide the method
     
       _updateMapAndPointcloud(scan_mm, velocities)
     
@@ -86,10 +99,11 @@ class CoreSLAM(object):
         attribute of the Laser object passed to the CoreSlam constructor
         velocities is a tuple of velocities (dxy_mm, dtheta_degrees, dt_seconds) for odometry
         '''
+
         # Build a scan for computing distance to map, and one for updating map 
         self._scan_update(self.scan_for_mapbuild, scans_mm)
         self._scan_update(self.scan_for_distance, scans_mm)
-                
+
         # Update velocities
         velocity_factor = (1 / velocities[2])  if (velocities[2] > 0) else 0
         new_dxy_mm = velocities[0] * velocity_factor  
@@ -119,7 +133,7 @@ class CoreSLAM(object):
         
     def _scan_update(self, scan, lidar):
         
-        scan.update(lidar, self.hole_width_mm, self.velocities)
+        scan.update(scans_mm=lidar, hole_width_mm=self.hole_width_mm, velocities=self.velocities)
         
         
 # SinglePositionSLAM class ---------------------------------------------------------------------------------------------

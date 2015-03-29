@@ -1,5 +1,5 @@
 /*
-coreslam_intel.c Intel Streaming SIMD Extensions for CoreSLAM
+coreslam_i686.c Intel Streaming SIMD Extensions for CoreSLAM
 
 Based on
 
@@ -114,5 +114,4 @@ distance_scan_to_map(
     /* Return sum scaled by number of points, or -1 if none */
     return npoints ? (int)(sum * 1024 / npoints) : -1;  
 }
-
 

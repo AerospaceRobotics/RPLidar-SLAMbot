@@ -66,4 +66,3 @@ setup (name = 'BreezySLAM',
     platforms='Linux; Windows; OS X',
     long_description = 'Provides core classes Position, Map, Laser, Scan, and algorithm CoreSLAM'
     )
-

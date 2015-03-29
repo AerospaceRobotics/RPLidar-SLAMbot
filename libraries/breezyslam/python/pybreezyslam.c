@@ -36,6 +36,8 @@ Change log:
 04-MAY-2014 : SDL - Changed back from meters to mm
 03-JUN-2014 : SDL - Made distanceScanToMap() return -1 for infinity
 23-JUL-2014 : SDL - Simplified API for Laser
+08-AUG-2014:  SDL - Moved Laser to pure Python
+13-AUG-2014:  SDL - Fixed Scan.update() bug in Python3
 */
 
 #include <Python.h>
@@ -44,7 +46,6 @@ Change log:
 #include "../c/coreslam.h"
 #include "../c/random.h"
 #include "pyextension_utils.h"
-
 
 // Position class  -------------------------------------------------------------
 
@@ -190,169 +191,6 @@ static position_t pypos2cpos(Position * pypos)
     return cpos;
 }
 
-// Laser class ------------------------------------------------------------
-
-typedef struct 
-{
-    PyObject_HEAD
-    
-    int scan_size;
-    double scan_rate_hz;
-    double detection_angle_degrees;
-    double distance_no_detection_mm;
-    int detection_margin;
-    double offset_mm;
-    
-} Laser;
-
-static laser_t pylaser2claser(Laser * pylaser)
-{
-    laser_t claser;
-    
-    claser.scan_size = pylaser->scan_size; 
-    claser.scan_rate_hz = pylaser->scan_rate_hz; 
-    claser.detection_angle_degrees = pylaser->detection_angle_degrees; 
-    claser.distance_no_detection_mm = pylaser->distance_no_detection_mm; 
-    claser.detection_margin = pylaser->detection_margin; 
-    claser.offset_mm = pylaser->offset_mm; 
-    
-    return claser;
-}
-
-static void
-Laser_dealloc(Laser* self)
-{                
-    Py_TYPE(self)->tp_free((PyObject*)self);
-}
-
-static PyObject *
-Laser_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
-{                    
-    Laser *self;
-    
-    self = (Laser *)type->tp_alloc(type, 0);
-    
-    return (PyObject *)self;
-}
-
-static int
-Laser_init(Laser *self, PyObject *args, PyObject *kwds)
-{       
-    static char* argnames[] = {
-        "scan_size", 
-        "scan_rate_hz", 
-        "detection_angle_degrees", 
-        "distance_no_detection_mm", 
-        "detection_margin", 
-        "offset_mm", 
-         NULL};
-    
-    self->detection_margin = 0;
-    self->offset_mm = 0;
-
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "iddd|id", argnames,
-        &self->scan_size,
-        &self->scan_rate_hz,
-        &self->detection_angle_degrees,
-        &self->distance_no_detection_mm,
-        &self->detection_margin,
-        &self->offset_mm))
-    {
-        return error_on_raise_argument_exception("Laser");
-    }
-    
-    return 0;    
-}
-
-
-static PyObject *
-Laser_str(Laser *self)
-{        
-    char str[500];
-    char lstr[500];
-    
-    laser_string(pylaser2claser(self), lstr);
-    
-    sprintf(str, "Laser: %s", lstr);
-        
-    return  PyUnicode_FromString(str);
-}
-
-
-#define TP_DOC_LASER \
-"A class representing the specifications of a scanning laser rangefinder (Lidar).\n"\
-"See data descriptors for details.\n"\
-"Laser.__init__(scanSize,\n"\
-"               scanRateHz,\n"\
-"               detectionAngleDegrees,\n"\
-"               distanceNoDetectionMillimeters,\n"\
-"               detectionMargin = 0,\n"\
-"               offsetMillimeters = 0)"
-
-static PyMemberDef Laser_members[] = {
-    {"scan_size", T_INT, offsetof(Laser, scan_size), 0, 
-    "number of rays per scan"},
-    {"scan_rate_hz", T_DOUBLE, offsetof(Laser, scan_rate_hz), 0, 
-    "laser scan rate in Hertz"},
-    {"detection_angle_degrees", T_DOUBLE, offsetof(Laser, detection_angle_degrees), 0, 
-    "laser detection angle in degrees (e.g. 240, 360)"},
-    {"distance_no_detection_mm", T_DOUBLE, offsetof(Laser, distance_no_detection_mm), 0, 
-    "scan distances above this are treated as infinfity"},
-    {"detection_margin", T_INT, offsetof(Laser, detection_margin), 0, 
-    " number of rays at edges of scan to ignore"},
-    {"offset_mm", T_DOUBLE, offsetof(Laser, offset_mm), 0, 
-    "forward/backward offset of laser motor from robot center"},
-    {NULL}  /* Sentinel */
-};
-
-static PyTypeObject pybreezyslam_LaserType = 
-{
-    #if PY_MAJOR_VERSION < 3
-    PyObject_HEAD_INIT(NULL)
-    0,                                          // ob_size
-    #else
-    PyVarObject_HEAD_INIT(NULL, 0)
-    #endif
-    "pypybreezyslam.Laser",                     // tp_name
-    sizeof(Laser),                              // tp_basicsize
-    0,                                          // tp_itemsize
-    (destructor)Laser_dealloc,                  // tp_dealloc
-    0,                                          // tp_print
-    0,                                          // tp_getattr
-    0,                                          // tp_setattr
-    0,                                          // tp_compare
-    (reprfunc)Laser_str,                        // tp_repr
-    0,                                          // tp_as_number
-    0,                                          // tp_as_sequence
-    0,                                          // tp_as_positionping
-    0,                                          // tp_hash 
-    0,                                          // tp_call
-    (reprfunc)Laser_str,                        // tp_str
-    0,                                          // tp_getattro
-    0,                                          // tp_setattro
-    0,                                          // tp_as_buffer
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,   // tp_flags
-    TP_DOC_LASER,                               // tp_doc 
-    0,                                          // tp_traverse 
-    0,                                          // tp_clear 
-    0,                                          // tp_richcompare 
-    0,                                          // tp_weaklistoffset 
-    0,                                          // tp_iter 
-    0,                                          // tp_iternext 
-    0,         					                // tp_methods 
-    Laser_members,          					// tp_members 
-    0,                                          // tp_getset 
-    0,                                          // tp_base 
-    0,                                          // tp_dict 
-    0,                                          // tp_descr_get 
-    0,                                          // tp_descr_set 
-    0,                                          // tp_dictoffset 
-    (initproc)Laser_init,                       // tp_init 
-    0,                                          // tp_alloc 
-    Laser_new,                                  // tp_new 
-};
-
-
 
 // Scan class ------------------------------------------------------------
 
@@ -360,7 +198,6 @@ typedef struct
 {
     PyObject_HEAD
     
-    laser_t laser;
     scan_t scan;
     int * lidar_mm;
     
@@ -390,27 +227,46 @@ Scan_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static int
 Scan_init(Scan *self, PyObject *args, PyObject *kwds)
 {                 
-    Laser * py_laser = NULL;
+    PyObject * py_laser = NULL;
     int span = 1;
     
     static char* argnames[] = {"laser", "span", NULL};
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwds,"O|i", argnames, &py_laser, &span))
+    int scan_size = 0;
+    double scan_rate_hz = 0;                
+    double detection_angle_degrees = 0;     
+    double distance_no_detection_mm = 0;
+    int detection_margin = 0;
+    double offset_mm = 0;
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwds,"O|i", argnames, 
+        &py_laser, 
+        &span))
     {
          return error_on_raise_argument_exception("Scan");
     }
     
-    if (error_on_check_argument_type((PyObject *)py_laser, &pybreezyslam_LaserType, 0,
-            "pybreezyslam.Laser", "Scan", "__init__"))
+    if (!int_from_obj(py_laser, "scan_size", &scan_size) ||
+        !double_from_obj(py_laser, "scan_rate_hz", &scan_rate_hz) ||
+        !double_from_obj(py_laser, "detection_angle_degrees", &detection_angle_degrees) ||
+        !double_from_obj(py_laser, "distance_no_detection_mm", &distance_no_detection_mm) ||
+        !int_from_obj(py_laser, "detection_margin", &detection_margin) ||
+        !double_from_obj(py_laser, "offset_mm", &offset_mm))
     {
-        return 1;
+         return error_on_raise_argument_exception("Scan");
     }
-            
-    self->laser = pylaser2claser(py_laser);
-    
-    scan_init(&self->scan, py_laser->scan_size, span);
-    
-    self->lidar_mm = int_alloc(py_laser->scan_size);
+      
+    scan_init(
+            &self->scan, 
+            span,
+            scan_size, 
+            scan_rate_hz,                
+            detection_angle_degrees,     
+            distance_no_detection_mm,    
+            detection_margin,               
+            offset_mm);
+ 
+    self->lidar_mm = int_alloc(self->scan.size);
     
     return 0;
 }
@@ -445,7 +301,7 @@ Scan_update(Scan *self, PyObject *args, PyObject *kwds)
     {
         return null_on_raise_argument_exception("Scan", "update");
     }
-    
+
     // Bozo filter on LIDAR argument
     if (!PyList_Check(py_lidar))
     {
@@ -454,8 +310,8 @@ Scan_update(Scan *self, PyObject *args, PyObject *kwds)
     }
     
     // Bozo filter on LIDAR argument list size
-    if (PyList_Size(py_lidar) != self->laser.scan_size)
-    {
+    if (PyList_Size(py_lidar) != self->scan.size)
+    {        
         return null_on_raise_argument_exception_with_details("Scan", "update", 
             "lidar size mismatch");
     }
@@ -485,7 +341,7 @@ Scan_update(Scan *self, PyObject *args, PyObject *kwds)
 
     // Extract LIDAR values from argument
     int k = 0;
-    for (k=0; k<self->laser.scan_size; ++k)
+    for (k=0; k<self->scan.size; ++k)
     {
         self->lidar_mm[k] = PyFloat_AsDouble(PyList_GetItem(py_lidar, k));
     }
@@ -494,7 +350,6 @@ Scan_update(Scan *self, PyObject *args, PyObject *kwds)
     scan_update(
         &self->scan, 
         self->lidar_mm, 
-        self->laser,
         hole_width_mm,
         dxy_mm,
         dtheta_degrees);
@@ -505,7 +360,7 @@ Scan_update(Scan *self, PyObject *args, PyObject *kwds)
 
 static PyMethodDef Scan_methods[] = 
 {
-    {"update", (PyCFunction)Scan_update, METH_VARARGS, 
+    {"update", (PyCFunction)Scan_update, METH_VARARGS | METH_KEYWORDS, 
     "Scan.update(scans_mm, hole_width_mm, velocities=None) updates scan.\n"\
     "scans_mm is a list of integers representing scanned distances in mm.\n"\
     "hole_width_mm is the width of holes (obstacles, walls) in millimeters.\n"\
@@ -727,7 +582,7 @@ static PyMethodDef Map_methods[] =
 
 #define TP_DOC_MAP \
 "A class for maps used in SLAM.\n"\
-"Map.__init__(size_pixels, scale_mm_per_pixel, bytes=None)"
+"Map.__init__(size_pixels, size_meters, bytes=None)"
 
 
 static PyTypeObject pybreezyslam_MapType = 
@@ -816,7 +671,7 @@ Randomizer_init(Randomizer *self, PyObject *args, PyObject *kwds)
         return error_on_raise_argument_exception("Randomizer");
     }
     
-    self->randomizer = random_init(seed);
+    self->randomizer = random_new(seed);
     
     return 0;
 }
@@ -914,7 +769,7 @@ rmhcPositionSearch(PyObject *self, PyObject *args)
     Position * py_start_pos = NULL;
 	Map * py_map = NULL;
     Scan * py_scan = NULL;
-    Laser * py_laser = NULL;
+    PyObject * py_laser = NULL;
 	double sigma_xy_mm = 0;
 	double sigma_theta_degrees = 0;
 	int max_search_iter = 0;
@@ -937,15 +792,11 @@ rmhcPositionSearch(PyObject *self, PyObject *args)
     // Convert Python objects to C structures
     position_t start_pos = pypos2cpos(py_start_pos);
 
-    // Convert Python laser object to C struct
-    laser_t laser = pylaser2claser(py_laser);
-   
 	position_t likeliest_position = 
     rmhc_position_search(
         start_pos,
         &py_map->map,
         &py_scan->scan,
-        laser,
         sigma_xy_mm,
         sigma_theta_degrees,
         max_search_iter,
@@ -986,9 +837,8 @@ static PyMethodDef module_methods[] =
 static void add_classes(PyObject * module)
 {
     add_class(module, &pybreezyslam_ScanType, "Scan");
-    add_class(module,   &pybreezyslam_MapType, "Map");
+    add_class(module, &pybreezyslam_MapType, "Map");
     add_class(module, &pybreezyslam_PositionType, "Position");
-    add_class(module, &pybreezyslam_LaserType, "Laser");
     add_class(module, &pybreezyslam_RandomizerType, "Randomizer");
 }
 
@@ -998,7 +848,6 @@ return
     type_is_ready(&pybreezyslam_ScanType) &&
     type_is_ready(&pybreezyslam_MapType) &&
     type_is_ready(&pybreezyslam_PositionType) &&
-    type_is_ready(&pybreezyslam_LaserType) &&
     type_is_ready(&pybreezyslam_RandomizerType);
 }
 
@@ -1057,5 +906,4 @@ PyInit_pybreezyslam(void)
 }
 
 #endif
-
 

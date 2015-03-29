@@ -1,5 +1,5 @@
 /*
-coreslam_neon.c ARM Cortex Neon acceleration for CoreSLAM
+coreslam_armv7l.c.c ARM Cortex Neon acceleration for CoreSLAM
 
 Copyright (C) 2014 by Simon D. Levy
 

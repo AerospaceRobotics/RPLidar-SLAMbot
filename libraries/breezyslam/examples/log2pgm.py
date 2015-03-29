@@ -76,7 +76,7 @@ def main():
     # Create a CoreSLAM object with laser params and optional robot object
     slam = RMHC_SLAM(MinesLaser(), MAP_SIZE_PIXELS, MAP_SIZE_METERS, random_seed=seed) \
            if seed \
-           else Deterministic_SLAM(URG04(), MAP_SIZE_PIXELS, MAP_SIZE_METERS)
+           else Deterministic_SLAM(MinesLaser(), MAP_SIZE_PIXELS, MAP_SIZE_METERS)
            
     # Report what we're doing
     nscans = len(lidars)

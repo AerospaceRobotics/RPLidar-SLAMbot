@@ -67,15 +67,54 @@ void add_class(PyObject * module, PyTypeObject * type, const char * classname)
 int double_from_tuple(PyObject * tup,   int pos,   double * val)
 {
     PyObject * py_val = PyTuple_GetItem(tup, pos);
-  
+    
     if (py_val)
     {
-         *val = PyFloat_AsDouble(py_val);
-         return PyErr_Occurred() ? 0 : 1;         
+        *val = PyFloat_AsDouble(py_val);
+        return PyErr_Occurred() ? 0 : 1;         
     }
-  
+    
     return 0;
 }
+
+
+int
+double_from_obj(
+    PyObject * obj,
+    const char * name,
+    double * val)
+{
+    PyObject * attr = PyObject_GetAttrString(obj, name);
+    
+    if (!attr)
+    {
+        return 0;
+    }
+    
+    *val = PyFloat_AsDouble(attr);
+    
+    return 1;
+}
+
+
+int
+int_from_obj(
+    PyObject * obj,
+    const char * name,
+    int * val)
+{    
+    PyObject * attr = PyObject_GetAttrString(obj, name);
+    
+    if (!attr)
+    {
+        return 0;
+    }
+    
+    *val = PyLong_AsLong(attr);
+    
+    return 1;
+}
+
 
 int 
 error_on_check_argument_type(
@@ -86,7 +125,7 @@ error_on_check_argument_type(
     const char * classname,
     const char *methodname)
 {
-
+    
     if (!PyObject_TypeCheck(obj, typ))
     {
         char details[200];

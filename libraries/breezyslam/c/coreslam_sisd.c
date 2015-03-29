@@ -68,4 +68,3 @@ distance_scan_to_map(
     /* Return sum scaled by number of points, or -1 if none */
     return npoints ? (int)(sum * 1024 / npoints) : -1;  
 }
-

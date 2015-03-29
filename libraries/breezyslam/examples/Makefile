@@ -18,55 +18,46 @@
 # Where you put the libbreezyslam library
 LIBDIR = /usr/local/lib
 
+JAVADIR = ../java/edu/wlu/cs/levy/breezyslam
+
 # Use EOG or your favorite image-display program
 VIEWER = eog
 
 # Set these for different experiments
 DATASET = exp2
-USE_ODOMETRY = 1
+USE_ODOMETRY = 0
 RANDOM_SEED  = 9999
 
-all: log2pgm
+all: log2pgm Log2PGM.class
 
 pytest: 
 	./log2pgm.py $(DATASET) $(USE_ODOMETRY) $(RANDOM_SEED)
 	$(VIEWER) $(DATASET).pgm ~/Desktop/$(DATASET).pgm
 
+
 cpptest: log2pgm 
 	./log2pgm $(DATASET) $(USE_ODOMETRY) $(RANDOM_SEED)
+	$(VIEWER) $(DATASET).pgm
+
+javatest: Log2PGM.class
+	java -classpath ../java:. -Djava.library.path=$(JAVADIR)/algorithms:$(JAVADIR)/components Log2PGM \
+	 $(DATASET) $(USE_ODOMETRY) $(RANDOM_SEED)
 	$(VIEWER) $(DATASET).pgm
 
 log2pgm: log2pgm.o 
 	g++ -O3 -o log2pgm log2pgm.o -L$(LIBDIR) -lbreezyslam
 
 log2pgm.o: log2pgm.cpp 
-	g++ -O3 -c -I ../c++ log2pgm.cpp
+	g++ -O3 -c -I ../cpp log2pgm.cpp
 
-bench: $(DATASET).pgm
-	./benchmark.py $(DATASET) 1000
+Log2PGM.class: Log2PGM.java
+	javac -classpath ../java Log2PGM.java
 
 $(DATASET).pgm:
 	./log2pgm.py $(DATASET) $(USE_ODOMETRY) $(RANDOM_SEED)
-
-bigtest: log2pgm
-	./log2pgm.py $(DATASET) 1 $(RANDOM_SEED)
-	mv $(DATASET).pgm $(DATASET)_py.pgm
-	./log2pgm $(DATASET) 1 $(RANDOM_SEED)
-	mv $(DATASET).pgm $(DATASET)_cpp.pgm
-	$(VIEWER) $(DATASET)_*.pgm ~/Desktop/$(DATASET).pgm
-	./log2pgm.py $(DATASET) 0 $(RANDOM_SEED)
-	mv $(DATASET).pgm $(DATASET)_py.pgm
-	./log2pgm $(DATASET) 0 $(RANDOM_SEED)
-	mv $(DATASET).pgm $(DATASET)_cpp.pgm
-	$(VIEWER) $(DATASET)_*.pgm ~/Desktop/$(DATASET).pgm
-	./log2pgm.py $(DATASET) 1
-	mv $(DATASET).pgm $(DATASET)_py.pgm
-	./log2pgm $(DATASET) 1
-	mv $(DATASET).pgm $(DATASET)_cpp.pgm
-	$(VIEWER) $(DATASET)_*.pgm ~/Desktop/$(DATASET).pgm
 
 backup:
 	cp -r .. ~/Documents/slam/bak-breezyslam
 
 clean:
-	rm -f log2pgm *.pyc *.pgm *.o *~
+	rm -f log2pgm *.pyc *.pgm *.o *.class *~
