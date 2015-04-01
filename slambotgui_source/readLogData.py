@@ -43,12 +43,12 @@ INTERNAL_MAP = False
 SMARTNESS_ON = False
 FAST_MAPPING = True
 logFileDirectory = ['examples'] # leave as empty string in list for current directory
-logFileName = 'data_24JUL14_14m.log'
+logFileName = 'data_6AUG14_16m.log'
 if FAST_MAPPING: from slambotgui.cvslamshow import SlamShow # uses OpenCV
 
 # SLAM preferences
 USE_ODOMETRY = True
-MAP_QUALITY = 3
+MAP_QUALITY = 7
 
 # GUI constants
 DATA_RATE = 1 # minimum time between updating data from lidar [ms] # can't be 0

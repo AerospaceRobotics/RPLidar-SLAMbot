@@ -205,7 +205,8 @@ class DataMatrix(object):
     R = np.where(robot, 255, GB).astype(np.uint8) # add robot path to red layer
 
     im = Image.fromarray(np.dstack((R,GB,GB))) # create image from depth stack of three layers
-    filepath = os.path.join('examples',filename)
+    # filepath = os.path.join('examples',filename)
+    filepath = os.path.join(filename)
     im.save(filepath) # save image
     print("Image saved to " + filepath)
 
