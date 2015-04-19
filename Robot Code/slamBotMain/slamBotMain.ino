@@ -74,6 +74,7 @@ bool startBit;
 
 // Counter initialization
 unsigned long long nextBeat;
+unsigned long long lidarFixed;
 int beatDuration = 50; // Heartbeat timing loop (ms)
 unsigned short ind = 0; // counter of number of scans in current revolution
 // unsigned long long curTime;
@@ -93,6 +94,7 @@ bool sleeping = false; // Do nothing except check for wake up command
 bool runLIDAR = false; // Do stuff with LIDAR?
 bool heartState = false; // Current state of heartbeat LED
 bool phaseMotorDriving = true; // True: Phase-Enable; False: In-In (for motor driver)
+bool fixing = false; // Are we currently trying to fix the LIDAR?
 
 // Control value initialization
 unsigned char motorspeed = 237; // approx motor speed for 360 readings per revolution
@@ -114,9 +116,9 @@ Encoder leftEncoder(LEFT_ENCODER_1, LEFT_ENCODER_2);
 Encoder rightEncoder(RIGHT_ENCODER_1, RIGHT_ENCODER_2);
 
 // Note that Serial1 is not used because the interrupt pins are needed for the left encoder
-HardwareSerial & pcSer = Serial;
+HardwareSerial & pcSer = Serial3;
 HardwareSerial & lidarSer = Serial2;
-HardwareSerial & xbeeSer = Serial3;
+HardwareSerial & xbeeSer = Serial;
 
 
 // ---------------------Main Methods--------------------- //
@@ -146,15 +148,18 @@ void loop() { // 16us
     beatHeart(heartState); nextBeat += beatDuration; // 16us
     readEncoders();
     if(updatingDriving1 or updatingDriving2) { updateDriving(); } // 64us
+    if(fixing && millis()>lidarFixed) { fixing = false; }
   }
 
-  if(runLIDAR) {
-    if(IS_OK(lidar.waitPoint())) { // 90us, waits for new data point (500us call-to-call in theory...)
-      pullScanData(dist, ang, startBit); // 36 us
-      checkScanRate(ind, motorspeed, startBit); // 12 us // ensure we're getting TARG scans per revolution
-      writeScanData(dist, ang, startBit); // 72 us // send data to computer over serial0
-    } else { fixLIDAR(); } // turn LIDAR on and make sure it's running fine
-  } else { analogWrite(RPLIDAR_MOTOR, 0); } // turn motor off if not using LIDAR
+  if(!fixing) {
+    if(runLIDAR) {
+      if(IS_OK(lidar.waitPoint())) { // 90us, waits for new data point (500us call-to-call in theory...)
+        pullScanData(); // 36 us
+        checkScanRate(); // 12 us // ensure we're getting TARG scans per revolution
+        writeScanData(); // 72 us // send data to computer over serial0
+      } else { fixLIDAR(); } // turn LIDAR on and make sure it's running fine
+    } else { analogWrite(RPLIDAR_MOTOR, 0); } // turn motor off if not using LIDAR
+  }
 }
 
 // curTime = micros();
@@ -170,12 +175,12 @@ bool beatHeart(bool & heartState) {
 }
 
 // LIDAR Functions
-void pullScanData(unsigned short & dist, unsigned short & ang, bool & startBit) {
+void pullScanData() {
   dist = (unsigned short) (DFAC*lidar.getCurrentPoint().distance); // Q13.-1 // distance [2mm]
   ang = (unsigned short) (AFAC*lidar.getCurrentPoint().angle); // Q9.3 // angle [0.125deg]
   startBit = lidar.getCurrentPoint().startBit; // new scan?
 }
-void writeScanData(const unsigned short & dist, const unsigned short & ang, const bool & startBit) {
+void writeScanData() {
   if(dist > DIST_MIN and dist < DIST_MAX and ang < ANG_MAX) { // only send real data
     softBuffer[bufferIndex + 0] = dist & MASK1; // least significant dist bits
     softBuffer[bufferIndex + 1] = (dist & MASK2) >> 8 | (ang & MASK3) << 4; // most significant dist bits, least significant ang bits
@@ -196,7 +201,7 @@ void writeScanData(const unsigned short & dist, const unsigned short & ang, cons
     bufferIndex = 0; // start writing to beginning of softBuffer
   }
 }
-void checkScanRate(unsigned short & ind, unsigned char & motorspeed, const bool & startBit) {
+void checkScanRate() {
   if(startBit) {
     // maintain TARG readings per revolution to minimize SLAM error
     if(ind > TARG + 1 and motorspeed < MAXSPEED) {analogWrite(RPLIDAR_MOTOR, ++motorspeed);} // too many readings
@@ -211,7 +216,8 @@ void fixLIDAR() {
   if (IS_OK(lidar.getDeviceInfo(info, 100))) { // RPLIDAR detected
     lidar.startScan(); // attempt to restart scanning if LIDAR is healthy
     analogWrite(RPLIDAR_MOTOR, 237); // turn motor on
-    delay(1000); // give motor time to stabilize
+    fixing = true; // don't try to scan yet
+    lidarFixed = millis() + 1000; // give motor time to stabilize
   }
 }
 
@@ -270,7 +276,9 @@ void checkXBeeInput() {
   if(sleeping and inChar != 'x') { return; } // sleeping only responds to command to wake up
 
   goal = 0;
-  if(inChar == 'c') {
+  if(inChar == 'h') {
+    xbeeSer.println("Hello!"); return;
+  } else if(inChar == 'c') {
     zeroEncoders(); // reset the encoders in preparation for a new driving command
     updatingDriving1 = true; updatingDriving2 = true; // tell main loop to monitor driving status
     goal = xbeeSer.parseInt(); xbeeSer.read(); // get angle and clear separator
