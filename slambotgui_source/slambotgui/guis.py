@@ -26,7 +26,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 VIEW_SIZE_M = 8.0 # default size of region to be shown in display [m]
-DPI = 132.2 # calculated from $ xrandr
+DPI = 131.2 # calculated from $ xrandr
 CMAP = plt.get_cmap('gray') # opposite of "binary"
 
 
@@ -36,7 +36,7 @@ class RegionFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame 
   # removeMarkers   deletes all temporary markers on the main map (old robot position)
   # drawMarker      draws robot on main map using matplotlib marker
 
-  def __init__(self, master, mapMatrix, setDisplayMode=None, MAP_SIZE_M=8, **unused):
+  def __init__(self, master, mapMatrix, MAP_SIZE_M=8, **unused):
     tk.Frame.__init__(self, master) # explicitly initialize base class and create window
     self.markers = [] # current matplotlib markers
 
@@ -64,9 +64,28 @@ class RegionFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame 
     self.canvas._tkcanvas.pack(fill='both', expand=True)
     NavigationToolbar2TkAgg(self.canvas, self)
 
+  def updateMap(self, robotRel, destination, mapMatrix):
+    # send maps to image object
+    self.myImg.set_data(mapMatrix) # 20ms
 
-    displayModeFrame = tk.Frame(self)
-    tk.Label(displayModeFrame, text="Map display mode: ").pack(side='left')
+    # finishing touches
+    removeMarkers(self.markers) # delete old robot position from map
+    marker = drawMarker(self.ax, robotRel, destination) # add new robot position to map # 0.2ms
+    self.markers.append(marker) # marker is a list of matplotlib.line.Line2D objects
+
+    # refresh the figure
+    self.canvas.draw() # 200ms
+
+
+######################################################################################
+
+
+class DisplayModeFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame class
+  # init            draws all fields in the output frame of the main App
+
+  def __init__(self, master, setDisplayMode=None):
+    tk.Frame.__init__(self, master) # explicitly initialize base class and create window
+    tk.Label(self, text="Map display mode: ").pack(side='left')
 
     self.setDisplayMode = setDisplayMode
     displayMode = tk.StringVar()
@@ -79,21 +98,8 @@ class RegionFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame 
                     'Targets': 5,
                     'Roads': 6}
     options = sorted(displayModes.iterkeys(), key=lambda k: displayModes[k]) # get keys, in value order
-    tk.OptionMenu(displayModeFrame, displayMode, *options).pack(side='left')
+    tk.OptionMenu(self, displayMode, *options).pack(side='left')
     displayMode.trace('w', lambda *args: self.setDisplayMode(displayModes[displayMode.get()]))
-    displayModeFrame.pack(side='bottom')
-
-  def updateMap(self, robotRel, destination, mapMatrix):
-    # send maps to image object
-    self.myImg.set_data(mapMatrix) # 20ms
-
-    # finishing touches
-    removeMarkers(self.markers) # delete old robot position from map
-    marker = drawMarker(self.ax, robotRel, destination) # add new robot position to map # 0.2ms
-    self.markers.append(marker) # marker is a list of matplotlib.line.Line2D objects
-
-    # refresh the figure
-    self.canvas.draw() # 200ms
 
 
 ######################################################################################
@@ -178,7 +184,8 @@ class EntryFrame(tk.Frame):
   # manualSend      triggered by request to manually send the command in the text box
   # autoSendCommand loop to control sending of commands, including automatic retries and continuous drive commands
 
-  def __init__(self, master, robot, closeWin, restartAll, saveImage, getACK, resetACK, TXQueue, statusStr, twoLines=False):
+  def __init__(self, master, robot, closeWin, restartAll, saveImage, getACK, resetACK, TXQueue, statusStr, 
+               twoLines=False, setDisplayMode=None, SMARTNESS_ON=False, **unused):
     tk.Frame.__init__(self, master) # explicitly initialize base class and create window
     self.master = master
 
@@ -192,6 +199,9 @@ class EntryFrame(tk.Frame):
     self.closeWin, self.restartAll, self.saveImage, self.getACK, self.resetACK, self.TXQueue, self.statusStr \
       =  closeWin,      restartAll,      saveImage,      getACK,      resetACK,      TXQueue,      statusStr
 
+    if SMARTNESS_ON:
+      displayModeFrame = DisplayModeFrame(self, setDisplayMode)
+      displayModeFrame.pack(side='top')
 
     # create buttons
     monospaceFont = Font(family="Courier", weight='bold', size=12)
@@ -283,12 +293,17 @@ class EntryFrame(tk.Frame):
 ######################################################################################
 
 class StatusFrame(tk.Frame):
-  def __init__(self, master, closeWin, restartAll, saveImage, statusStr, twoLines=False):
+  def __init__(self, master, closeWin, restartAll, saveImage, statusStr, 
+               twoLines=False, setDisplayMode=None, SMARTNESS_ON=False, **unused):
     tk.Frame.__init__(self, master, bd=5, relief='sunken') # explicitly initialize base class and create window
     self.master = master
 
     self.closeWin, self.restartAll, self.saveImage, self.statusStr \
       =  closeWin,      restartAll,      saveImage, statusStr
+
+    if SMARTNESS_ON:
+      displayModeFrame = DisplayModeFrame(self, setDisplayMode)
+      displayModeFrame.pack(side='bottom')
 
     # create buttons
     monospaceFont = Font(family="Courier", weight='bold', size=12)

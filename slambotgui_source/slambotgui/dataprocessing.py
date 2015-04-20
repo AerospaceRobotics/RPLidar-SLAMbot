@@ -125,7 +125,8 @@ class DataMatrix(object):
         # self.features.append(Feature(mass, com, bounds, coords))
 
   def getMapArray(self, size):
-    return bytearray(imresize(self.breezyMap if self.INTERNAL_MAP else self.pointMap, size, interp='nearest'))
+    # return bytearray(imresize(self.breezyMap if self.INTERNAL_MAP else self.pointMap, size, interp='nearest'))
+    return bytearray(imresize(self.getMapMatrix(), size, interp='nearest'))
 
   def getInsetMatrix(self):
     return self.insetMatrix

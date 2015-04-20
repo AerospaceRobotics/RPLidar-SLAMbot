@@ -40,7 +40,7 @@ from slambotgui.components import DaguRover5, RPLIDAR
 
 # User preferences
 INTERNAL_MAP = False
-SMARTNESS_ON = False
+SMARTNESS_ON = True
 FAST_MAPPING = True
 logFileDirectory = ['examples'] # leave as empty string in list for current directory
 logFileName = 'data_6AUG14_16m.log'
@@ -120,14 +120,16 @@ class App(object):
       # create the OpenCV window
       self.regionFrame = SlamShow(CV_IMG_SIZE, CV_IMG_RES_PIX_PER_MM, 'SLAM Rover: Hit ESC to quit')
       # create Tkinter control frames
-      self.statusFrame = StatusFrame(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr, twoLines=True)
+      self.statusFrame = StatusFrame(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr, 
+                                     twoLines=True, setDisplayMode=self.setDisplayMode, **KWARGS)
       self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(), **KWARGS)
       # pack frame
       self.statusFrame.pack(side='bottom', fill='x')
       self.insetFrame.pack(side='left', fill='both', expand=True)
     else:
       # create all the pretty stuff in the Tkinter window
-      self.statusFrame = StatusFrame(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr)
+      self.statusFrame = StatusFrame(self.master, self.closeWin, self.restartAll, self.saveImage, self.statusStr, 
+                                     setDisplayMode=self.setDisplayMode, **KWARGS)
       self.regionFrame = RegionFrame(self.master, self.data.getMapMatrix(), setDisplayMode=self.setDisplayMode, **KWARGS)
       self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(), **KWARGS)
       # pack frames

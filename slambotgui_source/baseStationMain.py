@@ -46,7 +46,7 @@ from slambotgui.components import DaguRover5, RPLIDAR
 
 # User preferences
 INTERNAL_MAP = True
-SMARTNESS_ON = False
+SMARTNESS_ON = True
 FAST_MAPPING = True
 LOG_ALL_DATA = False
 logFileDirectory = ['examples'] # leave as empty string in list for current directory
@@ -55,7 +55,7 @@ if FAST_MAPPING: from slambotgui.cvslamshow import SlamShow # uses OpenCV
 
 # SLAM preferences
 USE_ODOMETRY = True
-MAP_QUALITY = 3
+MAP_QUALITY = 7
 
 # GUI constants
 DATA_RATE = 50 # minimum time between updating data from lidar [ms]
@@ -69,7 +69,7 @@ DIST_MIN = 100; # minimum distance
 DIST_MAX = 6000; # maximum distance
 
 # Map constants
-MAP_SIZE_M = 16.0 # size of region to be mapped [m]
+MAP_SIZE_M = 14.0 # size of region to be mapped [m]
 INSET_SIZE_M = 2.0 # size of relative map
 MAP_RES_PIX_PER_M = 100 # number of pixels of data per meter [pix/m]
 MAP_SIZE_PIXELS = int(MAP_SIZE_M*MAP_RES_PIX_PER_M) # number of pixels across the entire map
@@ -135,7 +135,8 @@ class App(object):
       self.regionFrame = SlamShow(CV_IMG_SIZE, CV_IMG_RES_PIX_PER_MM, 'SLAM Rover: Hit ESC to quit')
       # create Tkinter control frames
       self.statusFrame = EntryFrame(self.master, self.robot, self.closeWin, self.restartAll, self.saveImage, \
-                                    self.serThread.getACK, self.serThread.resetACK, self.TXQueue, self.statusStr, twoLines=True)
+                                    self.serThread.getACK, self.serThread.resetACK, self.TXQueue, self.statusStr, 
+                                    twoLines=True, setDisplayMode=self.setDisplayMode, **KWARGS)
       self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(),
                                    sendCommand=self.statusFrame.sendCommand, setRelDestination=self.setRelDestination, **KWARGS)
       # pack frame
@@ -144,8 +145,9 @@ class App(object):
     else:
       # create all the pretty stuff in the Tkinter window
       self.statusFrame = EntryFrame(self.master, self.robot, self.closeWin, self.restartAll, self.saveImage, \
-                                    self.serThread.getACK, self.serThread.resetACK, self.TXQueue, self.statusStr)
-      self.regionFrame = RegionFrame(self.master, self.data.getMapMatrix(), setDisplayMode=self.setDisplayMode, **KWARGS)
+                                    self.serThread.getACK, self.serThread.resetACK, self.TXQueue, self.statusStr, 
+                                    setDisplayMode=self.setDisplayMode, **KWARGS)
+      self.regionFrame = RegionFrame(self.master, self.data.getMapMatrix(), **KWARGS)
       self.insetFrame = InsetFrame(self.master, self.data.getInsetMatrix(),
                                    sendCommand=self.statusFrame.sendCommand, setRelDestination=self.setRelDestination, **KWARGS)
       # pack frames
