@@ -145,7 +145,7 @@ void loop() { // 16us
   if(debugXBee and pcSer.available()>0) { checkPCInput(); }
   if(not debugXBee and xbeeSer.available()>0) { checkXBeeInput(); } // 24us idle - 60us with input
   if(millis()>nextBeat) {
-    beatHeart(heartState); nextBeat += beatDuration; // 16us
+    beatHeart(); nextBeat += beatDuration; // 16us
     readEncoders();
     if(updatingDriving1 or updatingDriving2) { updateDriving(); } // 64us
     // digitalWrite(HEART_LED, fixing);
@@ -170,7 +170,7 @@ void loop() { // 16us
 // ---------------------Sub Methods---------------------- //
 
 
-bool beatHeart(bool & heartState) {
+bool beatHeart() {
   heartState = !heartState;
   digitalWrite(HEART_LED, heartState);
 }
