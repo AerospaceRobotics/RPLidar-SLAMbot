@@ -198,3 +198,6 @@ class SerialThread(Thread):
           while self.ser.read(1) != SCN_FLAG: pass # delete current packet up to and including SCN_FLAG byte
           missed += 1
         continue # move to the next point
+
+      while self.ser.read() != SCN_FLAG: # clear bytes out of the input buffer if pointLine didn't match anything
+        pass
