@@ -1,7 +1,7 @@
 /*
 slamBotMain.ino - rover code for Aerospace Robots SLAMbot project
 
-Copyright (C) 2014 Michael Searing
+Copyright (C) 2015 Michael Searing
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

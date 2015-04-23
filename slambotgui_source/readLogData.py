@@ -2,7 +2,7 @@
 
 # baseStationMain.py - base station code for Aerospace Robotics SLAMbot project
 # 
-# Copyright (C) 2014 Michael Searing
+# Copyright (C) 2015 Michael Searing
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-GPL = "breezySLAM_XBEE.py Copyright (C) 2014 Michael Searing \n\
+GPL = "breezySLAM_XBEE.py Copyright (C) 2015 Michael Searing \n\
 This program comes with ABSOLUTELY NO WARRANTY. \n\
 This is free software, and you are welcome to redistribute it \n\
 under certain conditions; please cite the source."

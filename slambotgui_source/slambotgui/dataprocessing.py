@@ -2,7 +2,7 @@
 
 # maps.py - data objects to represent SLAM maps
 # 
-# Copyright (C) 2014 Michael Searing
+# Copyright (C) 2015 Michael Searing
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -98,22 +98,22 @@ class DataMatrix(object):
     unexplored = np.logical_and(fow_darkLimit < breezyMapShrunk, breezyMapShrunk < fow_brightLimit)
     wall = pointMapShrunk < wall_brightLimit
     display = np.where(wall, 0, np.where(unexplored, 127, 255))
-    if self.displayMode == 3: return display
+    if self.displayMode == 3: return display # filtered
 
-    if self.displayMode == 6: return np.where(breezyMapShrunk > road_darkLimit, 255, 0)
+    if self.displayMode == 6: return np.where(breezyMapShrunk > road_darkLimit, 255, 0) # roads
 
     gradientx, gradienty = np.zeros((shrink_size,shrink_size), dtype=bool), np.zeros((shrink_size,shrink_size), dtype=bool)
     n = 1 # number of times to take the diff (width of diff)
     gradientx[:,:-n], gradienty[:-n,:] = np.absolute(np.diff(display, n=n, axis=1))==128, np.absolute(np.diff(display, n=n, axis=0))==128
     targets = np.any([gradientx, np.roll(gradientx, n, axis=1), gradienty, np.roll(gradienty, n, axis=0)], axis=0)
     # targets = np.logical_or(gradientx, gradienty)
-    if self.displayMode == 4: return np.where(targets, 127, np.where(wall, 0, 255))
+    if self.displayMode == 4: return np.where(targets, 127, np.where(wall, 0, 255)) # edges
 
     lbl, num_lbls = label(targets, structure=[[1,1,1],[1,1,1],[1,1,1]])
     self.addFeatures(lbl, num_lbls, shrink_size)
     # etime = time.clock()
     # print etime-stime
-    if self.displayMode == 5: return lbl*255/(lbl.max() if lbl.max() != 0 else 1)
+    if self.displayMode == 5: return lbl*255/(lbl.max() if lbl.max() != 0 else 1) # targets
 
   def addFeatures(self, lbl, num_lbls, shrink_size):
     slices = find_objects(lbl) # index regions of each object in targets matrix
@@ -121,7 +121,7 @@ class DataMatrix(object):
       mass = len(coords[0]) # number of points in each object
       if mass >= self.minTargSize: # only continue if object is of reasonable size
         bounds = [slices[i][j].indices(shrink_size)[:2] for j in (0,1)] # slice.indices takes maximum index as argument
-        com = np.mean(coords, axis=1, dtype=int) # scipy's center_of_mass is too heavy (for no reason)
+        com = np.mean(coords, axis=1, dtype=int) # scipy's center_of_mass is too heavy (for literally no reason)
         # self.features.append(Feature(mass, com, bounds, coords))
 
   def getMapArray(self, size):

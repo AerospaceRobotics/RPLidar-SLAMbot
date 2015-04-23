@@ -2,7 +2,7 @@
 
 # comms.py - serial thread
 # 
-# Copyright (C) 2014 Michael Searing
+# Copyright (C) 2015 Michael Searing
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@ if PYTHON_SERIES == 2: from Queue import Empty as QueueEmpty
 elif PYTHON_SERIES == 3: from queue import Empty as QueueEmpty
 import sys
 from threading import Thread, Event # allow serial checking to happen on top of tkinter interface things
+# from multiprocessing import Process, Event # allow serial checking to happen at the same time as tkinter interface things
 from serial import Serial
 from serial.serialutil import SerialException
 from serial.tools import list_ports # get computer's port info

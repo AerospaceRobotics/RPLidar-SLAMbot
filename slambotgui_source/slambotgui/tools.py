@@ -2,7 +2,7 @@
 
 # tools.py - helper tools for package
 # 
-# Copyright (C) 2014 Michael Searing
+# Copyright (C) 2015 Michael Searing
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -113,7 +113,7 @@ def translatePt(point, vector): # performs translation by given vector
   return (point[0]+vector[0], point[1]+vector[1], point[2])
 def vecDiff(vec1, vec2):
   return tuple([el1 - el2 for el1, el2 in zip(vec1, vec2)])
-def wrt(point_old, frame_old, frame_new): # return point with respect to new reference frame
+def wrt(point_old, frame_old, frame_new): # return point with respect to new reference frame (all defined within same frame)
   diff = vecDiff(frame_new, frame_old)
   return rotatePt(translatePt(rotatePt(point_old, frame_old[2]), [-diff[0], -diff[1]]), -frame_new[2])
 

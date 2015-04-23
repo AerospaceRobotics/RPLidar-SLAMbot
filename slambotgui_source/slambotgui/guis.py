@@ -2,7 +2,7 @@
 
 # guis.py - GUI frames for Tkinter
 # 
-# Copyright (C) 2014 Michael Searing
+# Copyright (C) 2015 Michael Searing
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@ CMAP = plt.get_cmap('gray') # opposite of "binary"
 
 
 class RegionFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame class
+  # displays the region map with robot at current position, which is scrollable and zoomable, using matplotlib
   # init            draws all fields in the output frame of the main App
   # updateMaps      draws all map data onto the matplotlib figures
   # removeMarkers   deletes all temporary markers on the main map (old robot position)
@@ -81,7 +82,8 @@ class RegionFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame 
 
 
 class DisplayModeFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame class
-  # init            draws all fields in the output frame of the main App
+  # contains selector box to change view status of the region map
+  # init    draws all fields in the output frame of the main App
 
   def __init__(self, master, setDisplayMode=None):
     tk.Frame.__init__(self, master) # explicitly initialize base class and create window
@@ -108,6 +110,7 @@ class DisplayModeFrame(tk.Frame): # tkinter frame, inheriting from the tkinter F
 from math import atan2, degrees
 
 class InsetFrame(tk.Frame): # tkinter frame, inheriting from the tkinter Frame class
+  # displays robot's environs oriented to the robot, supporting clicking on the map to send a drive command
   # init            draws all fields in the output frame of the main App
   # updateMaps      draws all map data onto the matplotlib figures
   # removeMarkers   deletes all temporary markers on the main map (old robot position)
@@ -180,6 +183,7 @@ CMD_RATE = 100 # minimum time between auto-send commands [ms]
 MAX_TX_TRIES = 3 # max number of times to try to resend command before giving up
 
 class EntryFrame(tk.Frame):
+  # displays the status of the robot and contains methods to send data to the robot while running base station code to control robot
   # sendCommand     send string to command entry box, identical to typing command and hitting Send/<Return>
   # manualSend      triggered by request to manually send the command in the text box
   # autoSendCommand loop to control sending of commands, including automatic retries and continuous drive commands
@@ -293,6 +297,8 @@ class EntryFrame(tk.Frame):
 ######################################################################################
 
 class StatusFrame(tk.Frame):
+  # displays the status of the robot and allows basic operations to be used during replay of logged data
+
   def __init__(self, master, closeWin, restartAll, saveImage, statusStr, 
                twoLines=False, setDisplayMode=None, SMARTNESS_ON=False, **unused):
     tk.Frame.__init__(self, master, bd=5, relief='sunken') # explicitly initialize base class and create window
